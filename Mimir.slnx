@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Mimir.Core/Mimir.Core.csproj" />
+    <Project Path="src/Mimir.Infrastructure/Mimir.Infrastructure.csproj" />
+    <Project Path="src/Mimir.Cli/Mimir.Cli.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Mimir.Tests/Mimir.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path=".editorconfig" />
+    <File Path="global.json" />
+  </Folder>
+</Solution>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a1a2f"/>
+      <stop offset="1" stop-color="#312e81"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.5" r="0.45">
+      <stop offset="0" stop-color="#a5b4fc" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#a5b4fc" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="320" rx="24" fill="url(#bg)"/>
+  <rect width="1280" height="320" rx="24" fill="url(#glow)"/>
+  <g fill="none" stroke="#a5b4fc" stroke-opacity="0.35" stroke-width="2">
+    <circle cx="1050" cy="160" r="110"/>
+    <circle cx="1050" cy="160" r="80"/>
+    <circle cx="1050" cy="160" r="140" stroke-dasharray="4 10"/>
+  </g>
+  <text x="1050" y="190" text-anchor="middle" font-family="Segoe UI Symbol, Noto Sans Symbols, DejaVu Sans, sans-serif" font-size="88" fill="#a5b4fc">ᛗ</text>
+  <text x="80" y="150" font-family="Georgia, 'Times New Roman', serif" font-size="88" font-weight="bold" fill="#ffffff" letter-spacing="4">MIMIR</text>
+  <text x="84" y="200" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="28" fill="#ffffff" fill-opacity="0.85">A sabedoria do poço, agora com citação da fonte</text>
+  <text x="84" y="250" font-family="Consolas, Menlo, monospace" font-size="20" fill="#a5b4fc">C# · LLM · Fine-Tuning · Enterprise RAG · MCP · Agentes</text>
+</svg>

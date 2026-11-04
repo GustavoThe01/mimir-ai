@@ -1,0 +1,19 @@
+<Project>
+  <!-- Central Package Management: versões definidas apenas aqui -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup Label="IA">
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.11.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.11.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.11.0" />
+    <PackageVersion Include="OllamaSharp" Version="5.5.0" />
+    <PackageVersion Include="Anthropic" Version="13.4.0" />
+  </ItemGroup>
+  <ItemGroup Label="Host">
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+  </ItemGroup>
+  <ItemGroup Label="Testes">
+    <PackageVersion Include="xunit.v3" Version="4.0.2" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Anthropic" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="OllamaSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Mimir.Core\Mimir.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,23 @@
+# Build .NET
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+publish/
+*.user
+*.suo
+TestResults/
+coverage*/
+
+# Banco local
+*.db
+*.sqlite
+
+# IDEs
+.vs/
+.idea/
+.vscode/
+
+# SO
+Thumbs.db
+.DS_Store
