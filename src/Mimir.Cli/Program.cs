@@ -1,7 +1,11 @@
+using System.Text;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Mimir.Core.Llm;
 using Mimir.Infrastructure.Llm;
+
+// Sem isso, os acentos da resposta saem errados no terminal do Windows.
+Console.OutputEncoding = Encoding.UTF8;
 
 if (args.Length == 0 || string.IsNullOrWhiteSpace(args[0]))
 {
@@ -21,7 +25,12 @@ try
 {
     using IChatClient chatClient = ChatClientFactory.Create(options, Environment.GetEnvironmentVariable);
     var assistant = new KnowledgeAssistant(chatClient);
-    Console.WriteLine(await assistant.AskAsync(string.Join(' ', args)));
+    await foreach (var part in assistant.AskStreamingAsync(string.Join(' ', args)))
+    {
+        Console.Write(part);
+    }
+
+    Console.WriteLine();
     return 0;
 }
 catch (InvalidOperationException exception)

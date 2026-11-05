@@ -13,3 +13,5 @@ e [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - 14 testes unitários, sem rede e sem custo.
 - Pipeline de CI no GitHub Actions.
 - ADR 0001 — provedor configurável; ADR 0002 — fine-tuning em Python.
+- Resposta em streaming na CLI, com `KnowledgeAssistant.AskStreamingAsync`.
+- Validação com modelo real no Ollama e comparação entre `llama3.2:3b` e `llama3.2:1b` na GTX 1060, com o `llama3.2:3b` mantido como padrão.
