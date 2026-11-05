@@ -13,8 +13,8 @@ com o código pronto para trocar o modelo local por uma API paga mudando só a c
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-local-000000?style=flat-square&logo=ollama&logoColor=white)
 ![Custo](https://img.shields.io/badge/custo-R$_0-15803d?style=flat-square)
-![Roadmap](https://img.shields.io/badge/roadmap-dia_01_de_20-4338ca?style=flat-square)
-![Testes](https://img.shields.io/badge/testes-14_passando-15803d?style=flat-square)
+![Roadmap](https://img.shields.io/badge/roadmap-dia_02_de_20-4338ca?style=flat-square)
+![Testes](https://img.shields.io/badge/testes-16_passando-15803d?style=flat-square)
 
 </div>
 
@@ -68,13 +68,22 @@ Defini duas regras para ele: **não gastar nada** para construí-lo e **não dep
 
 | Conceito | Como vou aplicar | De graça | Situação |
 |---|---|---|---|
-| **LLM** | Responder perguntas através de uma interface única, com o provedor definido na configuração | Ollama + modelo aberto | 🟡 Troca de provedor pronta; resposta com modelo real no Dia 02 |
+| **LLM** | Responder perguntas através de uma interface única, com o provedor definido na configuração | Ollama + modelo aberto | 🟡 Já responde com modelo local e em streaming; saída estruturada e avaliação nos Dias 03–05 |
 | **Enterprise RAG** | Responder com base nos documentos da empresa, citando a fonte e respeitando a permissão de quem pergunta | Embeddings locais + SQLite | ⏳ Dias 06–10 |
 | **Fine-Tuning** | Treinar um modelo pequeno para classificar chamados por setor e medir o ganho contra o modelo sem ajuste | Script de treino em GPU local ou Google Colab gratuito | ⏳ Dias 11–15 |
 | **MCP** | Expor a busca e os chamados como ferramentas, para qualquer cliente compatível usar | SDK oficial do MCP para C# | ⏳ Dias 16–17 |
 | **Agentes Autônomos** | Agente que faz a triagem de um chamado consultando as ferramentas MCP, com limite de passos e aprovação humana | Modelo local com suporte a ferramentas | ⏳ Dias 18–19 |
 
 ### LLM: o núcleo não conhece o fornecedor
+
+Fiz o primeiro teste real em uma GTX 1060 de 6 GB, usando modelos gratuitos do Ollama, com as mesmas 3 perguntas:
+
+| Modelo | Tamanho | Velocidade medida | Classificou o chamado de TI? |
+|---|---|:---:|:---:|
+| `llama3.2:3b` (padrão) | 2,0 GB | 5,4 tokens/s | ✅ Sim |
+| `llama3.2:1b` | 1,3 GB | 10,5 tokens/s | ❌ Não |
+
+Escolhi o `llama3.2:3b`: ele é mais lento, mas acertou mais. Uma resposta curta levou cerca de 1 minuto, por isso a CLI mostra o texto em streaming. Esses modelos pequenos também erram: em um dos testes, o `llama3.2:3b` deu uma definição errada de livro-razão. É justamente esse problema que o RAG da semana 2 vai atacar, respondendo a partir de documentos e citando a fonte.
 
 O núcleo depende só de `IChatClient`, a abstração do `Microsoft.Extensions.AI`. A classe [`ChatClientFactory`](src/Mimir.Infrastructure/Llm/ChatClientFactory.cs) é o único lugar que conhece os provedores. Registrei essa decisão no [ADR 0001](docs/adr/0001-provedor-de-llm-configuravel.md).
 
@@ -113,7 +122,7 @@ Uma empresa fictícia tem políticas internas, manuais e chamados. Todos os docu
 
 | Módulo | O que resolve | Dia |
 |---|---|:---:|
-| 💬 **Perguntas** | Pergunta em linguagem natural pelo terminal | ✅ 01 (com o provedor de teste) |
+| 💬 **Perguntas** | Pergunta em linguagem natural pelo terminal, com resposta em streaming | ✅ 02 |
 | 📚 **Base de conhecimento** | Importa documentos, divide em trechos e indexa | 06–08 |
 | 🔐 **Permissões** | Cada documento tem os perfis que podem lê-lo | 10 |
 | 🏷️ **Classificação** | Sugere o setor responsável por um chamado | 11–15 |
@@ -186,7 +195,7 @@ ollama pull llama3.2:3b
 dotnet run --project src/Mimir.Cli -- "O que é um livro-razão?"
 ```
 
-> O teste com modelo real faz parte do Dia 02. Até lá, esse caminho está configurado, mas ainda não foi validado por mim.
+> Testei este caminho na minha máquina com uma GTX 1060 de 6 GB. A velocidade depende do seu hardware, e os modelos pequenos podem errar.
 
 ---
 
@@ -256,7 +265,7 @@ O formato de dados de treino e a forma de usar o modelo ajustado no Mimir entram
 
 | Semana | Dias | Conceito | Release | Progresso |
 |---|---|---|:---:|---|
-| 1 | 01–05 | LLM | `v0.1.0` | 🟪⬜⬜⬜⬜ |
+| 1 | 01–05 | LLM | `v0.1.0` | 🟪🟪⬜⬜⬜ |
 | 2 | 06–10 | Enterprise RAG | `v0.2.0` | ⬜⬜⬜⬜⬜ |
 | 3 | 11–15 | Fine-Tuning | `v0.3.0` | ⬜⬜⬜⬜⬜ |
 | 4 | 16–20 | MCP e Agentes Autônomos | `v1.0.0` | ⬜⬜⬜⬜⬜ |
@@ -273,8 +282,8 @@ dotnet test
 
 | Tipo | O que cobre | Situação |
 |---|---|---|
-| Unitários | `KnowledgeAssistant` e `ChatClientFactory`, sem rede e sem custo | ✅ 14 testes |
-| Com modelo local | Resposta real pelo Ollama, fora do CI | ⏳ Dia 02 |
+| Unitários | `KnowledgeAssistant` e `ChatClientFactory`, sem rede e sem custo | ✅ 16 testes |
+| Com modelo local | Resposta real pelo Ollama, conferida à mão e fora do CI | ✅ Feito no Dia 02 |
 | Qualidade do RAG | Perguntas com resposta esperada | ⏳ Dia 10 |
 | Segurança do agente | Limite de passos, aprovação e prompt injection | ⏳ Dia 19 |
 
@@ -308,7 +317,7 @@ Mantenho aqui um checklist vivo do que ainda vou incrementar neste repositório.
 
 **Projeto**
 - [x] Solution, provedor configurável e CI (Dia 01)
-- [ ] Resposta real com Ollama e streaming (Dia 02)
+- [x] Resposta real com Ollama e streaming (Dia 02)
 - [ ] Prompts versionados, saída estruturada, avaliação e resiliência (Dias 03–05) → `v0.1.0`
 - [ ] Enterprise RAG: ingestão, embeddings, busca híbrida, citações e permissões (Dias 06–10) → `v0.2.0`
 - [ ] Fine-Tuning: dados, linha de base, treino, exportação e comparação (Dias 11–15) → `v0.3.0`

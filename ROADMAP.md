@@ -12,9 +12,9 @@
 - [x] ADR 0001 — Provedor configurável · ADR 0002 — Fine-tuning em Python
 
 ### Dia 02 — Modelo real
-- [ ] Instalar o Ollama e validar a resposta com modelo local
-- [ ] Escolher o modelo pelo meu hardware e registrar a velocidade medida
-- [ ] Resposta em streaming na CLI
+- [x] Instalar o Ollama e validar a resposta com modelo local
+- [x] Escolher o modelo pelo meu hardware e registrar a velocidade medida
+- [x] Resposta em streaming na CLI
 
 ### Dia 03 — Prompts e saída estruturada
 - [ ] Prompts versionados em arquivos

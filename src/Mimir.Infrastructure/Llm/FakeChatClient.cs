@@ -18,7 +18,11 @@ public sealed class FakeChatClient : IChatClient
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await Task.CompletedTask;
-        yield return new ChatResponseUpdate(ChatRole.Assistant, Answer(messages));
+        // Entrega em duas partes, como um modelo real, para os testes exercitarem a montagem do texto.
+        var answer = Answer(messages);
+        var middle = answer.Length / 2;
+        yield return new ChatResponseUpdate(ChatRole.Assistant, answer[..middle]);
+        yield return new ChatResponseUpdate(ChatRole.Assistant, answer[middle..]);
     }
 
     public object? GetService(Type serviceType, object? serviceKey = null) =>
