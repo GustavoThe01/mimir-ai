@@ -17,8 +17,8 @@
 - [x] Resposta em streaming na CLI
 
 ### Dia 03 — Prompts e saída estruturada
-- [ ] Prompts versionados em arquivos
-- [ ] Saída em JSON validada contra um schema
+- [x] Prompts versionados em arquivos
+- [x] Saída em JSON validada contra um schema
 
 ### Dia 04 — Avaliação
 - [ ] Conjunto de perguntas com resposta esperada

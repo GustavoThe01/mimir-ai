@@ -7,9 +7,16 @@ using Mimir.Infrastructure.Llm;
 // Sem isso, os acentos da resposta saem errados no terminal do Windows.
 Console.OutputEncoding = Encoding.UTF8;
 
-if (args.Length == 0 || string.IsNullOrWhiteSpace(args[0]))
+const string ClassifyCommand = "classificar";
+
+var isClassification = args.Length > 1 && args[0] == ClassifyCommand;
+var text = string.Join(' ', isClassification ? args[1..] : args);
+
+if (string.IsNullOrWhiteSpace(text) || (args.Length == 1 && args[0] == ClassifyCommand))
 {
-    Console.WriteLine("Uso: mimir \"sua pergunta\"");
+    Console.WriteLine("Uso:");
+    Console.WriteLine("  mimir \"sua pergunta\"");
+    Console.WriteLine($"  mimir {ClassifyCommand} \"texto do chamado\"");
     return 1;
 }
 
@@ -24,8 +31,16 @@ var options = configuration.GetSection(LlmOptions.SectionName).Get<LlmOptions>()
 try
 {
     using IChatClient chatClient = ChatClientFactory.Create(options, Environment.GetEnvironmentVariable);
-    var assistant = new KnowledgeAssistant(chatClient);
-    await foreach (var part in assistant.AskStreamingAsync(string.Join(' ', args)))
+
+    if (isClassification)
+    {
+        var classification = await new TicketClassifier(chatClient).ClassifyAsync(text);
+        Console.WriteLine($"Setor: {classification.Department.ToString().ToUpperInvariant()}");
+        Console.WriteLine($"Motivo: {classification.Reason}");
+        return 0;
+    }
+
+    await foreach (var part in new KnowledgeAssistant(chatClient).AskStreamingAsync(text))
     {
         Console.Write(part);
     }
@@ -42,4 +57,9 @@ catch (HttpRequestException exception)
 {
     Console.Error.WriteLine($"Não consegui falar com o provedor {options.Provider}: {exception.Message}");
     return 3;
+}
+catch (StructuredOutputException exception)
+{
+    Console.Error.WriteLine(exception.Message);
+    return 4;
 }
