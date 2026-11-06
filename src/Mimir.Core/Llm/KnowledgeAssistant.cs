@@ -12,9 +12,7 @@ namespace Mimir.Core.Llm;
 /// </remarks>
 public sealed class KnowledgeAssistant(IChatClient chatClient)
 {
-    private const string SystemPrompt =
-        "Você é o Mimir, assistente da base de conhecimento de uma empresa. " +
-        "Responda em português, de forma direta. Se não souber a resposta, diga que não sabe.";
+    private static readonly string SystemPrompt = PromptLibrary.Load(PromptLibrary.Answer);
 
     public async Task<string> AskAsync(string question, CancellationToken cancellationToken = default)
     {

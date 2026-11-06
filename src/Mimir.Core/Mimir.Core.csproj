@@ -3,4 +3,7 @@
     <!-- Só as abstrações: o núcleo não sabe qual provedor está por trás. -->
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Prompts\*" />
+  </ItemGroup>
 </Project>

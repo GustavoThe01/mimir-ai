@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "properties": {
+    "department": {
+      "type": "string",
+      "enum": ["FINANCEIRO", "TI", "RH", "JURIDICO", "OUTROS"]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": ["department", "reason"],
+  "additionalProperties": false
+}
