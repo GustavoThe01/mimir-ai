@@ -11,4 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Mimir.Infrastructure\Mimir.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\datasets\*.jsonl" Link="datasets\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

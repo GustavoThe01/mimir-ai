@@ -19,3 +19,8 @@ e [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - `TicketClassifier`: classificação de chamados com saída estruturada, validação por JSON Schema e nova tentativa.
 - Comando `mimir classificar` na CLI.
 - 12 testes novos, incluindo respostas inválidas e setores inventados.
+- Conjunto de avaliação com 20 chamados em JSON Lines (`datasets/classificacao-chamados.v1.jsonl`), 4 por setor.
+- `ClassificationEvaluator` e `EvaluationReport`: acurácia, precisão, revocação e F1 por setor, matriz de confusão e lista de erros.
+- Comando `mimir avaliar`, que gera o relatório em Markdown.
+- Primeira rodada com `llama3.2:3b`: 16 de 20 (80%), registrada em `docs/avaliacao/`.
+- 12 testes novos.
