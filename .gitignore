@@ -21,3 +21,6 @@ coverage*/
 # SO
 Thumbs.db
 .DS_Store
+
+# Relatórios gerados por mimir avaliar (o de referência fica em docs/avaliacao)
+relatorios/

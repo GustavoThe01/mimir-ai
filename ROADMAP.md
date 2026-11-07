@@ -21,8 +21,8 @@
 - [x] Saída em JSON validada contra um schema
 
 ### Dia 04 — Avaliação
-- [ ] Conjunto de perguntas com resposta esperada
-- [ ] Comando que roda a avaliação e gera um relatório
+- [x] Conjunto de perguntas com resposta esperada
+- [x] Comando que roda a avaliação e gera um relatório
 
 ### Dia 05 — Resiliência
 - [ ] Timeout, retry e erros amigáveis
