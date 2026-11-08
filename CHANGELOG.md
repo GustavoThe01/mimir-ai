@@ -5,6 +5,8 @@ e [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ## [Não lançado]
 
+## [0.1.0] - 2026-11-08
+
 ### Adicionado
 - Solution `Mimir.slnx` com Core, Infrastructure, Cli e testes.
 - `KnowledgeAssistant`, que depende apenas de `IChatClient`.
@@ -24,3 +26,9 @@ e [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Comando `mimir avaliar`, que gera o relatório em Markdown.
 - Primeira rodada com `llama3.2:3b`: 16 de 20 (80%), registrada em `docs/avaliacao/`.
 - 12 testes novos.
+- `ResilientChatClient`: limite de tempo por tentativa e nova tentativa com espera crescente, só para falhas passageiras (conexão, tempo esgotado, 429 e 5xx).
+- `UsageTrackingChatClient` e `UsageTracker`: tokens de entrada e saída e tempo de cada chamada, no log e no fim da execução da CLI.
+- `ChatClientFactory.CreatePipeline`, que monta provedor, resiliência e registro de uso.
+- Configurações `Llm:TimeoutSeconds` e `Llm:MaxAttempts`.
+- Mensagens de erro com o que fazer quando o provedor não responde.
+- 15 testes novos.

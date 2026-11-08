@@ -1,6 +1,7 @@
 using System.ClientModel;
 using Anthropic;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using OllamaSharp;
 using OpenAI;
 
@@ -14,6 +15,51 @@ public static class ChatClientFactory
 {
     public const string AnthropicKeyVariable = "ANTHROPIC_API_KEY";
     public const string OpenAIKeyVariable = "OPENAI_API_KEY";
+
+    /// <summary>
+    /// Cliente pronto para uso: o provedor envolvido pelos middlewares de uso (tokens e tempo) e de resiliência.
+    /// </summary>
+    /// <remarks>
+    /// Ordem: <c>UsageTracking → Resilient → provedor</c>. O registro de uso fica por fora para medir o tempo total
+    /// que o usuário esperou, incluindo as novas tentativas.
+    /// </remarks>
+    public static IChatClient CreatePipeline(
+        LlmOptions options,
+        Func<string, string?> readEnvironmentVariable,
+        UsageTracker tracker,
+        ILoggerFactory loggerFactory,
+        TimeProvider? timeProvider = null)
+    {
+        ArgumentNullException.ThrowIfNull(loggerFactory);
+        var time = timeProvider ?? TimeProvider.System;
+        var provider = Create(options, readEnvironmentVariable);
+
+        var resilient = new ResilientChatClient(
+            provider,
+            Resilience(options),
+            time,
+            loggerFactory.CreateLogger<ResilientChatClient>());
+        return new UsageTrackingChatClient(resilient, tracker, time, loggerFactory.CreateLogger<UsageTrackingChatClient>());
+    }
+
+    internal static ResilienceSettings Resilience(LlmOptions options)
+    {
+        if (options.TimeoutSeconds <= 0 || options.MaxAttempts is < 1 or > 10)
+        {
+            throw new InvalidOperationException("Configure Llm:TimeoutSeconds maior que zero e Llm:MaxAttempts entre 1 e 10.");
+        }
+
+        var (name, hint) = options.Provider switch
+        {
+            LlmProvider.Ollama => ($"O Ollama em {options.Endpoint}",
+                "Confira se ele está rodando (ollama serve) e se o modelo foi baixado (ollama pull)."),
+            LlmProvider.Anthropic => ("A API da Anthropic", "Confira a conexão e o limite de uso da sua conta."),
+            LlmProvider.OpenAI => ("A API da OpenAI", "Confira a conexão, o endereço configurado e o limite de uso da sua conta."),
+            _ => (options.Provider.ToString(), string.Empty),
+        };
+
+        return new ResilienceSettings(TimeSpan.FromSeconds(options.TimeoutSeconds), options.MaxAttempts, TimeSpan.FromSeconds(1), name, hint);
+    }
 
     public static IChatClient Create(LlmOptions options, Func<string, string?> readEnvironmentVariable)
     {

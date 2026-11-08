@@ -25,9 +25,9 @@
 - [x] Comando que roda a avaliação e gera um relatório
 
 ### Dia 05 — Resiliência
-- [ ] Timeout, retry e erros amigáveis
-- [ ] Registro de tokens e tempo por chamada
-- [ ] Tag `v0.1.0`
+- [x] Timeout, retry e erros amigáveis
+- [x] Registro de tokens e tempo por chamada
+- [x] Tag `v0.1.0`
 
 ## Semana 2 — Enterprise RAG → `v0.2.0`
 

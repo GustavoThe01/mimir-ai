@@ -13,8 +13,8 @@ com o código pronto para trocar o modelo local por uma API paga mudando só a c
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-local-000000?style=flat-square&logo=ollama&logoColor=white)
 ![Custo](https://img.shields.io/badge/custo-R$_0-15803d?style=flat-square)
-![Roadmap](https://img.shields.io/badge/roadmap-dia_04_de_20-4338ca?style=flat-square)
-![Testes](https://img.shields.io/badge/testes-40_passando-15803d?style=flat-square)
+![Roadmap](https://img.shields.io/badge/roadmap-dia_05_de_20-4338ca?style=flat-square)
+![Testes](https://img.shields.io/badge/testes-55_passando-15803d?style=flat-square)
 
 </div>
 
@@ -68,7 +68,7 @@ Defini duas regras para ele: **não gastar nada** para construí-lo e **não dep
 
 | Conceito | Como vou aplicar | De graça | Situação |
 |---|---|---|---|
-| **LLM** | Responder perguntas através de uma interface única, com o provedor definido na configuração | Ollama + modelo aberto | 🟡 Responde com modelo local, em streaming e com saída estruturada, e já tem avaliação com 20 casos (80% de acerto); resiliência no Dia 05 |
+| **LLM** | Responder perguntas através de uma interface única, com o provedor definido na configuração | Ollama + modelo aberto | ✅ Responde com modelo local, em streaming e com saída estruturada, com avaliação (80% de acerto em 20 casos), limite de tempo, nova tentativa e registro de tokens |
 | **Enterprise RAG** | Responder com base nos documentos da empresa, citando a fonte e respeitando a permissão de quem pergunta | Embeddings locais + SQLite | ⏳ Dias 06–10 |
 | **Fine-Tuning** | Treinar um modelo pequeno para classificar chamados por setor e medir o ganho contra o modelo sem ajuste | Script de treino em GPU local ou Google Colab gratuito | ⏳ Dias 11–15 |
 | **MCP** | Expor a busca e os chamados como ferramentas, para qualquer cliente compatível usar | SDK oficial do MCP para C# | ⏳ Dias 16–17 |
@@ -124,6 +124,28 @@ O que aprendi com esse número:
 - **Latência:** a primeira chamada levou 71 s porque inclui o carregamento do modelo na GPU. Sem ela, a média ficou em 4,8 s por chamado.
 
 Com 20 casos, cada erro vale 5 pontos percentuais, então trato o número como um ponto de partida, não como uma medida precisa. O valor do conjunto é outro: agora qualquer mudança no prompt, no modelo ou no fine-tuning da semana 3 é comparada contra os mesmos casos.
+
+### Resiliência: o modelo pode demorar, cair ou recusar
+
+Toda chamada passa por dois middlewares do `Microsoft.Extensions.AI`, que envolvem o provedor sem que o núcleo saiba:
+
+```
+UsageTrackingChatClient  →  ResilientChatClient  →  Ollama / Anthropic / OpenAI
+(tokens e tempo)            (limite de tempo e nova tentativa)
+```
+
+- **Limite de tempo por tentativa** (`Llm:TimeoutSeconds`, padrão 120 s, generoso para modelo local). No streaming, o limite vale até o primeiro trecho: depois disso, o modelo está respondendo.
+- **Nova tentativa só para falha passageira:** conexão recusada, tempo esgotado, 429 e 5xx, com espera crescente (1 s, 2 s...). Chave inválida ou modelo inexistente falham na hora, porque repetir só atrasaria o erro.
+- **No streaming, nada de texto duplicado:** a nova tentativa só acontece antes do primeiro trecho.
+- **Erro que se entende:** quando as tentativas acabam, a CLI mostra o que fazer, e não um stack trace. Com o Ollama desligado, a saída real foi:
+
+```
+warn: Tentativa 1 de 2 falhou (não foi possível conectar). Nova tentativa em 1 s
+O Ollama em http://localhost:11999 não respondeu depois de 2 tentativa(s): não foi possível conectar.
+Confira se ele está rodando (ollama serve) e se o modelo foi baixado (ollama pull).
+```
+
+- **Tokens e tempo de cada chamada:** a CLI mostra o consumo no fim, e o log registra chamada por chamada. Na rodada de avaliação com o modelo já carregado, foram 20 chamadas, 4.926 tokens de entrada e 825 de saída, em 24,2 s. É com esse número que dá para estimar o custo antes de trocar o Ollama por uma API paga.
 
 O núcleo depende só de `IChatClient`, a abstração do `Microsoft.Extensions.AI`. A classe [`ChatClientFactory`](src/Mimir.Infrastructure/Llm/ChatClientFactory.cs) é o único lugar que conhece os provedores. Registrei essa decisão no [ADR 0001](docs/adr/0001-provedor-de-llm-configuravel.md).
 
@@ -266,6 +288,8 @@ dotnet run --project src/Mimir.Cli -- avaliar
 
 A chave fica sempre em variável de ambiente, nunca no código ou no `appsettings.json`.
 
+Numa API paga, um tempo esgotado pode ter sido processado e cobrado mesmo sem resposta. Se você preferir não arriscar uma cobrança repetida, desligue as novas tentativas com `Llm__MaxAttempts=1`.
+
 **Bash:**
 
 ```bash
@@ -317,7 +341,7 @@ O formato de dados de treino e a forma de usar o modelo ajustado no Mimir entram
 
 | Semana | Dias | Conceito | Release | Progresso |
 |---|---|---|:---:|---|
-| 1 | 01–05 | LLM | `v0.1.0` | 🟪🟪🟪🟪⬜ |
+| 1 | 01–05 | LLM | `v0.1.0` | 🟪🟪🟪🟪🟪 |
 | 2 | 06–10 | Enterprise RAG | `v0.2.0` | ⬜⬜⬜⬜⬜ |
 | 3 | 11–15 | Fine-Tuning | `v0.3.0` | ⬜⬜⬜⬜⬜ |
 | 4 | 16–20 | MCP e Agentes Autônomos | `v1.0.0` | ⬜⬜⬜⬜⬜ |
@@ -336,8 +360,9 @@ dotnet test
 |---|---|---|
 | Unitários | `KnowledgeAssistant`, `TicketClassifier` e `ChatClientFactory`, sem rede e sem custo | ✅ 28 testes |
 | Avaliação | Leitura do conjunto, métricas e relatório, com um modelo simulado | ✅ 12 testes |
+| Resiliência | Nova tentativa, limite de tempo, cancelamento, streaming e registro de tokens, com falhas simuladas | ✅ 15 testes |
 | Com modelo local | Resposta real pelo Ollama, conferida à mão e fora do CI | ✅ Feito no Dia 02 |
-| Classificação com modelo local | `mimir avaliar` com 20 chamados, fora do CI | ✅ 16 de 20 no Dia 04 |
+| Classificação com modelo local | `mimir avaliar` com 20 chamados, fora do CI | ✅ 16 de 20 nos Dias 04 e 05 |
 | Qualidade do RAG | Perguntas com resposta esperada | ⏳ Dia 10 |
 | Segurança do agente | Limite de passos, aprovação e prompt injection | ⏳ Dia 19 |
 
@@ -355,7 +380,7 @@ mimir-ai/
 │   └── assets/                    # ✅ banner
 ├── src/
 │   ├── Mimir.Core/                # ✅ assistente, classificador, prompts e avaliação · ⏳ RAG e agente
-│   ├── Mimir.Infrastructure/      # ✅ ChatClientFactory · ⏳ SQLite e vetores
+│   ├── Mimir.Infrastructure/      # ✅ provedores, resiliência e registro de uso · ⏳ SQLite e vetores
 │   └── Mimir.Cli/                 # ✅ perguntar, classificar e avaliar pelo terminal
 ├── tests/Mimir.Tests/             # ✅ testes unitários
 ├── training/                      # ⏳ Dia 13 — fine-tuning em Python
@@ -376,7 +401,7 @@ Mantenho aqui um checklist vivo do que ainda vou incrementar neste repositório.
 - [x] Resposta real com Ollama e streaming (Dia 02)
 - [x] Prompts versionados e saída estruturada (Dia 03)
 - [x] Avaliação com conjunto de casos e relatório (Dia 04)
-- [ ] Resiliência (Dia 05) → `v0.1.0`
+- [x] Resiliência e registro de tokens (Dia 05) → `v0.1.0`
 - [ ] Enterprise RAG: ingestão, embeddings, busca híbrida, citações e permissões (Dias 06–10) → `v0.2.0`
 - [ ] Fine-Tuning: dados, linha de base, treino, exportação e comparação (Dias 11–15) → `v0.3.0`
 - [ ] Servidor MCP (Dias 16–17)

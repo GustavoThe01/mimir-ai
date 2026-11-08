@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Mimir.Core.Evaluation;
 using Mimir.Core.Llm;
 using Mimir.Infrastructure.Llm;
@@ -33,9 +34,18 @@ var configuration = new ConfigurationBuilder()
 
 var options = configuration.GetSection(LlmOptions.SectionName).Get<LlmOptions>() ?? new LlmOptions();
 
+// Avisos (como uma nova tentativa) vão para o stderr, sem misturar com a resposta.
+// Para ver tokens e tempo de cada chamada no log, use Logging__LogLevel__Default=Information.
+using var loggerFactory = LoggerFactory.Create(logging => logging
+    .SetMinimumLevel(LogLevel.Warning)
+    .AddConfiguration(configuration.GetSection("Logging"))
+    .AddConsole(console => console.LogToStandardErrorThreshold = LogLevel.Trace)
+    .AddSimpleConsole(console => console.SingleLine = true));
+var usage = new UsageTracker();
+
 try
 {
-    using IChatClient chatClient = ChatClientFactory.Create(options, Environment.GetEnvironmentVariable);
+    using IChatClient chatClient = ChatClientFactory.CreatePipeline(options, Environment.GetEnvironmentVariable, usage, loggerFactory);
 
     switch (command)
     {
@@ -43,10 +53,11 @@ try
             var classification = await new TicketClassifier(chatClient).ClassifyAsync(text);
             Console.WriteLine($"Setor: {classification.Department.ToString().ToUpperInvariant()}");
             Console.WriteLine($"Motivo: {classification.Reason}");
+            PrintUsage(usage);
             return 0;
 
         case EvaluateCommand:
-            return await EvaluateAsync(chatClient, options, string.IsNullOrWhiteSpace(text) ? null : text.Trim());
+            return await EvaluateAsync(chatClient, options, usage, string.IsNullOrWhiteSpace(text) ? null : text.Trim());
 
         default:
             await foreach (var part in new KnowledgeAssistant(chatClient).AskStreamingAsync(text))
@@ -55,8 +66,14 @@ try
             }
 
             Console.WriteLine();
+            PrintUsage(usage);
             return 0;
     }
+}
+catch (LlmUnavailableException exception)
+{
+    Console.Error.WriteLine(exception.Message);
+    return 3;
 }
 catch (InvalidOperationException exception)
 {
@@ -79,7 +96,21 @@ catch (Exception exception) when (exception is FormatException or IOException)
     return 5;
 }
 
-static async Task<int> EvaluateAsync(IChatClient chatClient, LlmOptions options, string? datasetPath)
+static void PrintUsage(UsageTracker usage)
+{
+    if (usage.Calls.Count == 0)
+    {
+        return;
+    }
+
+    var tokens = usage.InputTokens + usage.OutputTokens == 0
+        ? "o provedor não informou os tokens"
+        : $"{usage.InputTokens} tokens de entrada e {usage.OutputTokens} de saída";
+    var seconds = usage.Calls.Sum(call => call.Elapsed.TotalSeconds);
+    Console.WriteLine($"[{usage.Calls.Count} chamada(s) · {tokens} · {seconds:0.0} s]");
+}
+
+static async Task<int> EvaluateAsync(IChatClient chatClient, LlmOptions options, UsageTracker usage, string? datasetPath)
 {
     var path = datasetPath ?? Path.Combine(AppContext.BaseDirectory, DefaultDataset);
     var cases = EvaluationDataset.Parse(await File.ReadAllTextAsync(path));
@@ -106,6 +137,7 @@ static async Task<int> EvaluateAsync(IChatClient chatClient, LlmOptions options,
     Console.WriteLine();
     Console.WriteLine($"Acertos: {report.Correct} de {report.Total} ({report.Accuracy:P1})");
     Console.WriteLine($"Relatório: {Path.GetFullPath(reportPath)}");
+    PrintUsage(usage);
     return 0;
 }
 
