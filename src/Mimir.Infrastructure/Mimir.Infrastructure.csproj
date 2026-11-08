@@ -2,9 +2,13 @@
   <ItemGroup>
     <PackageReference Include="Anthropic" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="OllamaSharp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Mimir.Core\Mimir.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Mimir.Tests" />
   </ItemGroup>
 </Project>

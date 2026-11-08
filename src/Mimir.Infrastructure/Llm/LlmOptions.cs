@@ -26,4 +26,10 @@ public sealed class LlmOptions
 
     /// <summary>Endereço do serviço. Obrigatório no Ollama; opcional na OpenAI, para serviços compatíveis.</summary>
     public string? Endpoint { get; set; }
+
+    /// <summary>Limite de cada tentativa até o primeiro trecho da resposta. O padrão é generoso para modelos locais.</summary>
+    public int TimeoutSeconds { get; set; } = 120;
+
+    /// <summary>Total de tentativas, contando a primeira. Só falhas passageiras são repetidas.</summary>
+    public int MaxAttempts { get; set; } = 3;
 }
