@@ -13,8 +13,8 @@ com o código pronto para trocar o modelo local por uma API paga mudando só a c
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-local-000000?style=flat-square&logo=ollama&logoColor=white)
 ![Custo](https://img.shields.io/badge/custo-R$_0-15803d?style=flat-square)
-![Roadmap](https://img.shields.io/badge/roadmap-dia_05_de_20-4338ca?style=flat-square)
-![Testes](https://img.shields.io/badge/testes-55_passando-15803d?style=flat-square)
+![Roadmap](https://img.shields.io/badge/roadmap-dia_06_de_20-4338ca?style=flat-square)
+![Testes](https://img.shields.io/badge/testes-71_passando-15803d?style=flat-square)
 
 </div>
 
@@ -69,7 +69,7 @@ Defini duas regras para ele: **não gastar nada** para construí-lo e **não dep
 | Conceito | Como vou aplicar | De graça | Situação |
 |---|---|---|---|
 | **LLM** | Responder perguntas através de uma interface única, com o provedor definido na configuração | Ollama + modelo aberto | ✅ Responde com modelo local, em streaming e com saída estruturada, com avaliação (80% de acerto em 20 casos), limite de tempo, nova tentativa e registro de tokens |
-| **Enterprise RAG** | Responder com base nos documentos da empresa, citando a fonte e respeitando a permissão de quem pergunta | Embeddings locais + SQLite | ⏳ Dias 06–10 |
+| **Enterprise RAG** | Responder com base nos documentos da empresa, citando a fonte e respeitando a permissão de quem pergunta | Embeddings locais + SQLite | 🟡 Ingestão pronta (8 documentos, 28 trechos); embeddings, busca, citação e permissão nos Dias 07–10 |
 | **Fine-Tuning** | Treinar um modelo pequeno para classificar chamados por setor e medir o ganho contra o modelo sem ajuste | Script de treino em GPU local ou Google Colab gratuito | ⏳ Dias 11–15 |
 | **MCP** | Expor a busca e os chamados como ferramentas, para qualquer cliente compatível usar | SDK oficial do MCP para C# | ⏳ Dias 16–17 |
 | **Agentes Autônomos** | Agente que faz a triagem de um chamado consultando as ferramentas MCP, com limite de passos e aprovação humana | Modelo local com suporte a ferramentas | ⏳ Dias 18–19 |
@@ -149,6 +149,37 @@ Confira se ele está rodando (ollama serve) e se o modelo foi baixado (ollama pu
 
 O núcleo depende só de `IChatClient`, a abstração do `Microsoft.Extensions.AI`. A classe [`ChatClientFactory`](src/Mimir.Infrastructure/Llm/ChatClientFactory.cs) é o único lugar que conhece os provedores. Registrei essa decisão no [ADR 0001](docs/adr/0001-provedor-de-llm-configuravel.md).
 
+### Ingestão: trechos que sabem de onde vieram
+
+A base de conhecimento fica em [`knowledge/`](knowledge): 8 documentos de uma empresa fictícia, a Yggdrasil Serviços,
+em Markdown. Cada documento começa com um cabeçalho que diz o setor e **quem pode ler**:
+
+```markdown
+---
+titulo: Faixas salariais 2026
+setor: RH
+acesso: [rh, diretoria]
+atualizado_em: 2026-03-01
+---
+```
+
+O cabeçalho é obrigatório. Documento sem `acesso` não entra na base, porque ficaria público por engano.
+Dois documentos são restritos (faixas salariais e contratos com fornecedores), para o teste de permissão do Dia 10.
+
+O `Chunker` divide cada documento respeitando a estrutura: um trecho nunca atravessa uma seção, e parágrafo longo
+é quebrado em frases, com a última frase repetida no começo do trecho seguinte. Cada trecho guarda:
+
+- **a citação**, com arquivo e linhas, como `politica-de-ferias.md#L14-L16`, que a resposta vai mostrar no Dia 09;
+- **o caminho da seção**, como "Política de férias › Como pedir", que vai junto do texto para a busca;
+- **os perfis de acesso** do documento, para o filtro do Dia 10;
+- **um hash do texto**, para não refazer o embedding de um trecho que não mudou.
+
+```bash
+dotnet run --project src/Mimir.Cli -- ingerir
+```
+
+A ingestão não chama o modelo. Hoje ela mostra os documentos e os trechos; gravar o índice com embeddings é o Dia 07.
+
 ### Enterprise RAG: o que muda em relação a um RAG simples
 
 - **Busca híbrida:** vetores para o significado e FTS5 para termos exatos, como códigos e siglas.
@@ -185,7 +216,7 @@ Uma empresa fictícia tem políticas internas, manuais e chamados. Todos os docu
 | Módulo | O que resolve | Dia |
 |---|---|:---:|
 | 💬 **Perguntas** | Pergunta em linguagem natural pelo terminal, com resposta em streaming | ✅ 02 |
-| 📚 **Base de conhecimento** | Importa documentos, divide em trechos e indexa | 06–08 |
+| 📚 **Base de conhecimento** | Importa documentos, divide em trechos e indexa | ✅ 06 (índice nos dias 07–08) |
 | 🔐 **Permissões** | Cada documento tem os perfis que podem lê-lo | 10 |
 | 🏷️ **Classificação** | Sugere o setor responsável por um chamado | ✅ 03 (fine-tuning nos dias 11–15) |
 | 🔌 **Servidor MCP** | Ferramentas para clientes compatíveis | 16–17 |
@@ -342,7 +373,7 @@ O formato de dados de treino e a forma de usar o modelo ajustado no Mimir entram
 | Semana | Dias | Conceito | Release | Progresso |
 |---|---|---|:---:|---|
 | 1 | 01–05 | LLM | `v0.1.0` | 🟪🟪🟪🟪🟪 |
-| 2 | 06–10 | Enterprise RAG | `v0.2.0` | ⬜⬜⬜⬜⬜ |
+| 2 | 06–10 | Enterprise RAG | `v0.2.0` | 🟪⬜⬜⬜⬜ |
 | 3 | 11–15 | Fine-Tuning | `v0.3.0` | ⬜⬜⬜⬜⬜ |
 | 4 | 16–20 | MCP e Agentes Autônomos | `v1.0.0` | ⬜⬜⬜⬜⬜ |
 
@@ -361,6 +392,7 @@ dotnet test
 | Unitários | `KnowledgeAssistant`, `TicketClassifier` e `ChatClientFactory`, sem rede e sem custo | ✅ 28 testes |
 | Avaliação | Leitura do conjunto, métricas e relatório, com um modelo simulado | ✅ 12 testes |
 | Resiliência | Nova tentativa, limite de tempo, cancelamento, streaming e registro de tokens, com falhas simuladas | ✅ 15 testes |
+| Ingestão | Cabeçalho dos documentos, divisão em trechos, sobreposição, linhas da citação e a base real | ✅ 16 testes |
 | Com modelo local | Resposta real pelo Ollama, conferida à mão e fora do CI | ✅ Feito no Dia 02 |
 | Classificação com modelo local | `mimir avaliar` com 20 chamados, fora do CI | ✅ 16 de 20 nos Dias 04 e 05 |
 | Qualidade do RAG | Perguntas com resposta esperada | ⏳ Dia 10 |
@@ -374,14 +406,15 @@ dotnet test
 mimir-ai/
 ├── .github/workflows/ci.yml       # ✅ build e testes, sem custo
 ├── datasets/                      # ✅ chamados com o setor esperado
+├── knowledge/                     # ✅ documentos fictícios da empresa
 ├── docs/
 │   ├── adr/                       # ✅ decisões de arquitetura
 │   ├── avaliacao/                 # ✅ relatórios de referência
 │   └── assets/                    # ✅ banner
 ├── src/
-│   ├── Mimir.Core/                # ✅ assistente, classificador, prompts e avaliação · ⏳ RAG e agente
+│   ├── Mimir.Core/                # ✅ assistente, classificador, prompts, avaliação e divisão em trechos · ⏳ busca e agente
 │   ├── Mimir.Infrastructure/      # ✅ provedores, resiliência e registro de uso · ⏳ SQLite e vetores
-│   └── Mimir.Cli/                 # ✅ perguntar, classificar e avaliar pelo terminal
+│   └── Mimir.Cli/                 # ✅ perguntar, classificar, avaliar e ingerir pelo terminal
 ├── tests/Mimir.Tests/             # ✅ testes unitários
 ├── training/                      # ⏳ Dia 13 — fine-tuning em Python
 ├── Mimir.slnx
@@ -402,7 +435,8 @@ Mantenho aqui um checklist vivo do que ainda vou incrementar neste repositório.
 - [x] Prompts versionados e saída estruturada (Dia 03)
 - [x] Avaliação com conjunto de casos e relatório (Dia 04)
 - [x] Resiliência e registro de tokens (Dia 05) → `v0.1.0`
-- [ ] Enterprise RAG: ingestão, embeddings, busca híbrida, citações e permissões (Dias 06–10) → `v0.2.0`
+- [x] Ingestão: documentos fictícios e divisão em trechos com a origem (Dia 06)
+- [ ] Enterprise RAG: embeddings, busca híbrida, citações e permissões (Dias 07–10) → `v0.2.0`
 - [ ] Fine-Tuning: dados, linha de base, treino, exportação e comparação (Dias 11–15) → `v0.3.0`
 - [ ] Servidor MCP (Dias 16–17)
 - [ ] Agente autônomo e testes de segurança (Dias 18–19)

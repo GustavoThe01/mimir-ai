@@ -32,8 +32,8 @@
 ## Semana 2 — Enterprise RAG → `v0.2.0`
 
 ### Dia 06 — Ingestão
-- [ ] Documentos fictícios da empresa
-- [ ] Divisão em trechos, com metadados de origem
+- [x] Documentos fictícios da empresa
+- [x] Divisão em trechos, com metadados de origem
 
 ### Dia 07 — Embeddings
 - [ ] `IEmbeddingGenerator` com modelo local

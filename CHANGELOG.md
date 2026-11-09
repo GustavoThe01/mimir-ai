@@ -5,6 +5,13 @@ e [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ## [Não lançado]
 
+### Adicionado
+- Base de conhecimento em `knowledge/`: 8 documentos fictícios da Yggdrasil Serviços, com cabeçalho de setor, perfis de acesso e data.
+- `DocumentParser`, que valida o cabeçalho e recusa documento sem perfil de acesso.
+- `Chunker`: trechos por seção e parágrafo, com sobreposição, citação por arquivo e linhas, caminho da seção e hash do texto.
+- Comando `mimir ingerir`, que roda sem chamar o modelo.
+- 16 testes novos.
+
 ## [0.1.0] - 2026-11-08
 
 ### Adicionado

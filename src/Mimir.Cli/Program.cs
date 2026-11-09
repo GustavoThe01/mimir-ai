@@ -4,7 +4,9 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Mimir.Core.Evaluation;
+using Mimir.Core.Knowledge;
 using Mimir.Core.Llm;
+using Mimir.Infrastructure.Knowledge;
 using Mimir.Infrastructure.Llm;
 
 // Sem isso, os acentos da resposta saem errados no terminal do Windows.
@@ -12,10 +14,26 @@ Console.OutputEncoding = Encoding.UTF8;
 
 const string ClassifyCommand = "classificar";
 const string EvaluateCommand = "avaliar";
+const string IngestCommand = "ingerir";
 const string DefaultDataset = "datasets/classificacao-chamados.v1.jsonl";
+const string DefaultKnowledge = "knowledge";
 
-var command = args.Length > 0 && args[0] is ClassifyCommand or EvaluateCommand ? args[0] : null;
+var command = args.Length > 0 && args[0] is ClassifyCommand or EvaluateCommand or IngestCommand ? args[0] : null;
 var text = string.Join(' ', command is null ? args : args[1..]);
+
+// A ingestão não chama o modelo: roda sem Ollama e sem configuração de LLM.
+if (command == IngestCommand)
+{
+    try
+    {
+        return await IngestAsync(string.IsNullOrWhiteSpace(text) ? Path.Combine(AppContext.BaseDirectory, DefaultKnowledge) : text.Trim());
+    }
+    catch (Exception exception) when (exception is FormatException or IOException)
+    {
+        Console.Error.WriteLine(exception.Message);
+        return 5;
+    }
+}
 
 if (command != EvaluateCommand && string.IsNullOrWhiteSpace(text))
 {
@@ -23,6 +41,7 @@ if (command != EvaluateCommand && string.IsNullOrWhiteSpace(text))
     Console.WriteLine("  mimir \"sua pergunta\"");
     Console.WriteLine($"  mimir {ClassifyCommand} \"texto do chamado\"");
     Console.WriteLine($"  mimir {EvaluateCommand} [arquivo.jsonl]   (padrão: {DefaultDataset})");
+    Console.WriteLine($"  mimir {IngestCommand} [pasta]            (padrão: {DefaultKnowledge})");
     return 1;
 }
 
@@ -94,6 +113,26 @@ catch (Exception exception) when (exception is FormatException or IOException)
 {
     Console.Error.WriteLine(exception.Message);
     return 5;
+}
+
+static async Task<int> IngestAsync(string folder)
+{
+    var documents = await FileDocumentSource.LoadAsync(folder);
+    var chunks = documents.SelectMany(document => Chunker.Split(document)).ToList();
+
+    Console.WriteLine($"{"Documento",-28} {"Setor",-11} {"Acesso",-20} {"Trechos",7}");
+    foreach (var document in documents)
+    {
+        var count = chunks.Count(chunk => chunk.DocumentId == document.Id);
+        Console.WriteLine($"{document.Id,-28} {document.Department.ToString().ToUpperInvariant(),-11} {string.Join(", ", document.Access),-20} {count,7}");
+    }
+
+    var sizes = chunks.Select(chunk => chunk.Text.Length).ToList();
+    Console.WriteLine();
+    Console.WriteLine($"{documents.Count} documentos, {chunks.Count} trechos, de {sizes.Min()} a {sizes.Max()} caracteres (média {sizes.Average():0}).");
+    Console.WriteLine($"Exemplo de citação: {chunks[0].Citation} ({chunks[0].Section})");
+    Console.WriteLine("Os trechos ainda não são gravados: o índice com embeddings entra no Dia 07.");
+    return 0;
 }
 
 static void PrintUsage(UsageTracker usage)
