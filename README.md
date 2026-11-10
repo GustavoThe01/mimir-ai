@@ -196,16 +196,30 @@ do texto, da citação e dos perfis de acesso.
   não para uso real.
 
 O modelo padrão é o `paraphrase-multilingual` do Ollama, escolhido por ser multilíngue: os documentos estão em português.
-**Ainda não rodei a ingestão com ele**: os testes e a demonstração abaixo usam o gerador de hashing. Com ele, a busca já
-encontra a seção certa:
+Rodei a ingestão com ele na GTX 1060: os 28 trechos viraram vetores de 768 dimensões em 20,6 s, já contando o
+carregamento do modelo. Na segunda vez, nenhum trecho foi enviado ao modelo, porque nada tinha mudado.
 
-```
-mimir buscar "minha conta foi bloqueada depois de errar a senha"
-0,190  senhas-e-acessos.md#L18-L18            Senhas e acessos › Bloqueio de conta
-0,173  senhas-e-acessos.md#L12-L14            Senhas e acessos › Regras de senha
-```
+Depois comparei o modelo real com o gerador de hashing nas mesmas 7 perguntas. Escolhi de propósito perguntas que
+não usam as palavras dos documentos:
 
-O documento restrito de faixas salariais ainda aparece em buscas de qualquer pessoa: o filtro por perfil entra no Dia 10.
+| Pergunta | Modelo real: 1º resultado | Hashing: 1º resultado |
+|---|---|:---:|
+| quero descansar um mês no fim do ano | ✅ Política de férias › Divisão em períodos | ❌ Reembolso de despesas |
+| posso trabalhar de casa? | ✅ Trabalho remoto › Ajuda de custo | ✅ |
+| ganhei um presente caro de um fornecedor, posso aceitar? | ✅ Código de conduta › Presentes e brindes | ⚠️ documento certo, seção errada |
+| o que é livro-razão | ✅ Glossário financeiro › Livro-razão | ✅ |
+| esqueci minha senha e não consigo entrar | ✅ Senhas e acessos › Bloqueio de conta | ✅ |
+| quanto ganha um desenvolvedor pleno | ✅ Faixas salariais 2026 › Engenharia | ✅ |
+| paguei um táxi na viagem, como recebo o dinheiro de volta | ✅ Reembolso › O que pode ser reembolsado | ❌ Política de férias |
+
+O modelo acertou o documento nas 7 perguntas; o hashing, em 5. A diferença aparece onde devia: "descansar no fim do ano"
+não tem nenhuma palavra em comum com "férias", e "dinheiro de volta" não tem nenhuma com "reembolso". Só um modelo
+que aprendeu o significado liga uma coisa à outra. Os testes e o CI continuam com o hashing, que não precisa de rede.
+
+São 7 perguntas, então trato isso como um teste de fumaça, e não como uma medida de qualidade. A avaliação do RAG,
+com mais perguntas e resposta esperada, é o Dia 10.
+
+Repare na pergunta sobre salário: o documento restrito de faixas salariais aparece para qualquer pessoa. O filtro por perfil, antes da busca, entra no Dia 10.
 
 ### Enterprise RAG: o que muda em relação a um RAG simples
 
