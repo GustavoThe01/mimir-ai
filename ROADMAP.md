@@ -36,9 +36,9 @@
 - [x] Divisão em trechos, com metadados de origem
 
 ### Dia 07 — Embeddings
-- [ ] `IEmbeddingGenerator` com modelo local
-- [ ] Vetores no SQLite
-- [ ] Documentar as opções pagas de embeddings no README
+- [x] `IEmbeddingGenerator` com modelo local
+- [x] Vetores no SQLite
+- [x] Documentar as opções pagas de embeddings no README
 
 ### Dia 08 — Busca híbrida
 - [ ] FTS5 + vetores, com fusão dos rankings

@@ -11,6 +11,12 @@ e [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - `Chunker`: trechos por seção e parágrafo, com sobreposição, citação por arquivo e linhas, caminho da seção e hash do texto.
 - Comando `mimir ingerir`, que roda sem chamar o modelo.
 - 16 testes novos.
+- Índice de trechos no SQLite (`SqliteChunkStore`), com o vetor em BLOB, o hash do texto e o modelo que gerou o vetor.
+- `KnowledgeIndexer`, que gera vetores só para os trechos novos ou alterados e refaz tudo quando o modelo muda.
+- `SemanticSearch` e o comando `mimir buscar`, com similaridade por cosseno.
+- Configuração `Embeddings` separada de `Llm`: Ollama (`paraphrase-multilingual`), OpenAI e o gerador de teste por hashing.
+- Opções pagas de embeddings no README, incluindo o motivo de não haver opção Anthropic.
+- 10 testes novos.
 
 ## [0.1.0] - 2026-11-08
 

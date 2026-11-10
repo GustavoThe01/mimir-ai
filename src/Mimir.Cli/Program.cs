@@ -15,23 +15,55 @@ Console.OutputEncoding = Encoding.UTF8;
 const string ClassifyCommand = "classificar";
 const string EvaluateCommand = "avaliar";
 const string IngestCommand = "ingerir";
+const string SearchCommand = "buscar";
 const string DefaultDataset = "datasets/classificacao-chamados.v1.jsonl";
 const string DefaultKnowledge = "knowledge";
 
-var command = args.Length > 0 && args[0] is ClassifyCommand or EvaluateCommand or IngestCommand ? args[0] : null;
+var command = args.Length > 0 && args[0] is ClassifyCommand or EvaluateCommand or IngestCommand or SearchCommand ? args[0] : null;
 var text = string.Join(' ', command is null ? args : args[1..]);
 
-// A ingestão não chama o modelo: roda sem Ollama e sem configuração de LLM.
-if (command == IngestCommand)
+var settings = new ConfigurationBuilder()
+    .SetBasePath(AppContext.BaseDirectory)
+    .AddJsonFile("appsettings.json")
+    .AddEnvironmentVariables()
+    .Build();
+
+// Ingestão e busca usam o modelo de embeddings, não o modelo de conversa.
+if (command is IngestCommand or SearchCommand)
 {
+    var embeddingOptions = settings.GetSection(EmbeddingOptions.SectionName).Get<EmbeddingOptions>() ?? new EmbeddingOptions();
     try
     {
-        return await IngestAsync(string.IsNullOrWhiteSpace(text) ? Path.Combine(AppContext.BaseDirectory, DefaultKnowledge) : text.Trim());
+        var (generator, model) = EmbeddingGeneratorFactory.Create(embeddingOptions, Environment.GetEnvironmentVariable);
+        using (generator)
+        {
+            var store = new SqliteChunkStore(embeddingOptions.Database);
+            if (command == IngestCommand)
+            {
+                return await IngestAsync(
+                    string.IsNullOrWhiteSpace(text) ? Path.Combine(AppContext.BaseDirectory, DefaultKnowledge) : text.Trim(),
+                    new KnowledgeIndexer(generator, store, model));
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                Console.Error.WriteLine($"Uso: mimir {SearchCommand} \"sua pergunta\"");
+                return 1;
+            }
+
+            return await SearchAsync(text, new SemanticSearch(generator, store, model));
+        }
     }
-    catch (Exception exception) when (exception is FormatException or IOException)
+    catch (Exception exception) when (exception is FormatException or IOException or InvalidOperationException)
     {
         Console.Error.WriteLine(exception.Message);
         return 5;
+    }
+    catch (HttpRequestException exception)
+    {
+        Console.Error.WriteLine($"Não consegui gerar os vetores com {embeddingOptions.Provider} em {embeddingOptions.Endpoint}: {exception.Message}");
+        Console.Error.WriteLine($"Confira se o Ollama está rodando e se o modelo foi baixado: ollama pull {embeddingOptions.Model}");
+        return 3;
     }
 }
 
@@ -42,14 +74,11 @@ if (command != EvaluateCommand && string.IsNullOrWhiteSpace(text))
     Console.WriteLine($"  mimir {ClassifyCommand} \"texto do chamado\"");
     Console.WriteLine($"  mimir {EvaluateCommand} [arquivo.jsonl]   (padrão: {DefaultDataset})");
     Console.WriteLine($"  mimir {IngestCommand} [pasta]            (padrão: {DefaultKnowledge})");
+    Console.WriteLine($"  mimir {SearchCommand} \"sua pergunta\"");
     return 1;
 }
 
-var configuration = new ConfigurationBuilder()
-    .SetBasePath(AppContext.BaseDirectory)
-    .AddJsonFile("appsettings.json")
-    .AddEnvironmentVariables()
-    .Build();
+var configuration = settings;
 
 var options = configuration.GetSection(LlmOptions.SectionName).Get<LlmOptions>() ?? new LlmOptions();
 
@@ -115,7 +144,7 @@ catch (Exception exception) when (exception is FormatException or IOException)
     return 5;
 }
 
-static async Task<int> IngestAsync(string folder)
+static async Task<int> IngestAsync(string folder, KnowledgeIndexer indexer)
 {
     var documents = await FileDocumentSource.LoadAsync(folder);
     var chunks = documents.SelectMany(document => Chunker.Split(document)).ToList();
@@ -131,7 +160,23 @@ static async Task<int> IngestAsync(string folder)
     Console.WriteLine();
     Console.WriteLine($"{documents.Count} documentos, {chunks.Count} trechos, de {sizes.Min()} a {sizes.Max()} caracteres (média {sizes.Average():0}).");
     Console.WriteLine($"Exemplo de citação: {chunks[0].Citation} ({chunks[0].Section})");
-    Console.WriteLine("Os trechos ainda não são gravados: o índice com embeddings entra no Dia 07.");
+
+    var report = await indexer.IndexAsync(chunks);
+    Console.WriteLine();
+    var dimensions = report.Embedded > 0 ? $", {report.Dimensions} dimensões" : string.Empty;
+    Console.WriteLine($"Índice ({report.Model}): {report.Embedded} trecho(s) com vetor novo, {report.Unchanged} sem mudança, "
+        + $"{report.Removed} removido(s){dimensions}, {report.Elapsed.TotalSeconds:0.0} s.");
+    return 0;
+}
+
+static async Task<int> SearchAsync(string query, SemanticSearch search)
+{
+    var hits = await search.SearchAsync(query);
+    foreach (var hit in hits)
+    {
+        Console.WriteLine($"{hit.Score:0.000}  {hit.Chunk.Citation,-38} {hit.Chunk.Section}");
+    }
+
     return 0;
 }
 
