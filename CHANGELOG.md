@@ -17,6 +17,7 @@ e [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Configuração `Embeddings` separada de `Llm`: Ollama (`paraphrase-multilingual`), OpenAI e o gerador de teste por hashing.
 - Opções pagas de embeddings no README, incluindo o motivo de não haver opção Anthropic.
 - 10 testes novos.
+- Ingestão com o modelo real `paraphrase-multilingual` (768 dimensões): documento certo nas 7 perguntas do teste de fumaça, contra 5 do gerador por hashing. Resultado no README.
 
 ## [0.1.0] - 2026-11-08
 
