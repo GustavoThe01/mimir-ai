@@ -13,8 +13,8 @@ com o código pronto para trocar o modelo local por uma API paga mudando só a c
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-local-000000?style=flat-square&logo=ollama&logoColor=white)
 ![Custo](https://img.shields.io/badge/custo-R$_0-15803d?style=flat-square)
-![Roadmap](https://img.shields.io/badge/roadmap-dia_06_de_20-4338ca?style=flat-square)
-![Testes](https://img.shields.io/badge/testes-71_passando-15803d?style=flat-square)
+![Roadmap](https://img.shields.io/badge/roadmap-dia_07_de_20-4338ca?style=flat-square)
+![Testes](https://img.shields.io/badge/testes-81_passando-15803d?style=flat-square)
 
 </div>
 
@@ -69,7 +69,7 @@ Defini duas regras para ele: **não gastar nada** para construí-lo e **não dep
 | Conceito | Como vou aplicar | De graça | Situação |
 |---|---|---|---|
 | **LLM** | Responder perguntas através de uma interface única, com o provedor definido na configuração | Ollama + modelo aberto | ✅ Responde com modelo local, em streaming e com saída estruturada, com avaliação (80% de acerto em 20 casos), limite de tempo, nova tentativa e registro de tokens |
-| **Enterprise RAG** | Responder com base nos documentos da empresa, citando a fonte e respeitando a permissão de quem pergunta | Embeddings locais + SQLite | 🟡 Ingestão pronta (8 documentos, 28 trechos); embeddings, busca, citação e permissão nos Dias 07–10 |
+| **Enterprise RAG** | Responder com base nos documentos da empresa, citando a fonte e respeitando a permissão de quem pergunta | Embeddings locais + SQLite | 🟡 Ingestão e índice de vetores prontos (8 documentos, 28 trechos); busca híbrida, citação e permissão nos Dias 08–10 |
 | **Fine-Tuning** | Treinar um modelo pequeno para classificar chamados por setor e medir o ganho contra o modelo sem ajuste | Script de treino em GPU local ou Google Colab gratuito | ⏳ Dias 11–15 |
 | **MCP** | Expor a busca e os chamados como ferramentas, para qualquer cliente compatível usar | SDK oficial do MCP para C# | ⏳ Dias 16–17 |
 | **Agentes Autônomos** | Agente que faz a triagem de um chamado consultando as ferramentas MCP, com limite de passos e aprovação humana | Modelo local com suporte a ferramentas | ⏳ Dias 18–19 |
@@ -178,7 +178,34 @@ O `Chunker` divide cada documento respeitando a estrutura: um trecho nunca atrav
 dotnet run --project src/Mimir.Cli -- ingerir
 ```
 
-A ingestão não chama o modelo. Hoje ela mostra os documentos e os trechos; gravar o índice com embeddings é o Dia 07.
+A ingestão não chama o modelo de conversa: ela gera os vetores com o **modelo de embeddings** e grava no índice
+(`mimir.db`, SQLite), só para os trechos novos ou alterados.
+
+### Embeddings: o índice que entende significado
+
+Cada trecho vira um vetor (embedding), gerado pela interface `IEmbeddingGenerator` do `Microsoft.Extensions.AI`, a mesma
+ideia do `IChatClient`: o núcleo não sabe qual provedor está por trás. O vetor fica numa coluna BLOB do SQLite, ao lado
+do texto, da citação e dos perfis de acesso.
+
+- **Incremental:** o índice guarda o hash do texto e o nome do modelo. Rodar `ingerir` de novo só gera vetor para o que
+  mudou; trocar de modelo gera tudo de novo, porque vetores de modelos diferentes não se comparam.
+- **Busca por significado:** `mimir buscar` gera o vetor da pergunta e compara com todos os trechos pelo cosseno.
+  Com dezenas de trechos, comparar com todos é exato e rápido; a busca híbrida com FTS5 entra no Dia 08.
+- **Sem modelo para testar:** com `Embeddings__Provider=Fake`, um gerador por *feature hashing* cria vetores a partir
+  das palavras, sem rede. Ele acha textos com palavras em comum, mas não entende sinônimos: é para testes e CI,
+  não para uso real.
+
+O modelo padrão é o `paraphrase-multilingual` do Ollama, escolhido por ser multilíngue: os documentos estão em português.
+**Ainda não rodei a ingestão com ele**: os testes e a demonstração abaixo usam o gerador de hashing. Com ele, a busca já
+encontra a seção certa:
+
+```
+mimir buscar "minha conta foi bloqueada depois de errar a senha"
+0,190  senhas-e-acessos.md#L18-L18            Senhas e acessos › Bloqueio de conta
+0,173  senhas-e-acessos.md#L12-L14            Senhas e acessos › Regras de senha
+```
+
+O documento restrito de faixas salariais ainda aparece em buscas de qualquer pessoa: o filtro por perfil entra no Dia 10.
 
 ### Enterprise RAG: o que muda em relação a um RAG simples
 
@@ -300,6 +327,20 @@ Para rodar a avaliação com os 20 chamados do conjunto (o relatório sai na pas
 dotnet run --project src/Mimir.Cli -- avaliar
 ```
 
+Para indexar os documentos e buscar por significado, com o modelo de embeddings local:
+
+```bash
+ollama pull paraphrase-multilingual
+dotnet run --project src/Mimir.Cli -- ingerir
+dotnet run --project src/Mimir.Cli -- buscar "como peço reembolso de um táxi?"
+```
+
+Sem baixar modelo nenhum, com o gerador de teste:
+
+```bash
+Embeddings__Provider=Fake dotnet run --project src/Mimir.Cli -- ingerir
+```
+
 > Testei este caminho na minha máquina com uma GTX 1060 de 6 GB. A velocidade depende do seu hardware, e os modelos pequenos podem errar.
 
 ---
@@ -339,6 +380,29 @@ $env:Llm__Model = "claude-haiku-5-5"
 dotnet run --project src/Mimir.Cli -- "Sua pergunta"
 ```
 
+### Embeddings pagos
+
+| Provedor | `Embeddings__Provider` | Variável da chave | `Embeddings__Model` | No Mimir |
+|---|---|---|---|---|
+| Ollama (grátis, padrão) | `Ollama` | não precisa | `paraphrase-multilingual` | ✅ configurado |
+| [OpenAI](https://developers.openai.com/api/docs/guides/embeddings) | `OpenAI` | `OPENAI_API_KEY` | `text-embedding-3-small` ou `text-embedding-3-large` | ✅ implementado, nunca executado |
+| Serviço compatível com a API de embeddings da OpenAI | `OpenAI` + `Embeddings__Endpoint` | `OPENAI_API_KEY` | o do serviço | ✅ implementado, nunca executado |
+| [Voyage AI](https://docs.voyageai.com/) | — | — | — | ⏳ precisaria de um adaptador |
+
+A Anthropic não tem um modelo de embeddings próprio; a [documentação dela](https://platform.claude.com/docs/en/build-with-claude/embeddings)
+cita a Voyage AI como opção. Por isso não existe opção `Anthropic` em `Embeddings__Provider`: dá para conversar com o Claude e gerar
+os vetores com outro provedor, porque as duas configurações são independentes.
+
+```bash
+export OPENAI_API_KEY="sua-chave"
+export Embeddings__Provider="OpenAI"
+export Embeddings__Model="text-embedding-3-small"
+dotnet run --project src/Mimir.Cli -- ingerir
+```
+
+Trocar o modelo de embeddings refaz o índice inteiro na próxima ingestão (é automático), e numa API paga isso é cobrado
+por token. Com o índice incremental, as ingestões seguintes só pagam pelos trechos que mudaram.
+
 ### Fine-Tuning pago
 
 O fine-tuning é o recurso que mais varia entre fornecedores. Este é o cenário que encontrei em novembro de 2026, em boa parte a partir de comparativos de terceiros, então **confirme na documentação oficial antes de contratar**:
@@ -351,7 +415,7 @@ O fine-tuning é o recurso que mais varia entre fornecedores. Este é o cenário
 | **Amazon Bedrock e Microsoft Foundry** | [Oferecem](https://www.syncfusion.com/blogs/post/top-llm-api-comparison-2026), com variação por modelo |
 | **Together AI, Fireworks AI** | [Treino de modelos abertos](https://www.developersdigest.tech/models/fine-tuning) como serviço |
 
-O formato de dados de treino e a forma de usar o modelo ajustado no Mimir entram nesta seção no Dia 15. As opções pagas de embeddings entram no Dia 07.
+O formato de dados de treino e a forma de usar o modelo ajustado no Mimir entram nesta seção no Dia 15. As opções pagas de embeddings estão na seção acima.
 
 ---
 
@@ -373,7 +437,7 @@ O formato de dados de treino e a forma de usar o modelo ajustado no Mimir entram
 | Semana | Dias | Conceito | Release | Progresso |
 |---|---|---|:---:|---|
 | 1 | 01–05 | LLM | `v0.1.0` | 🟪🟪🟪🟪🟪 |
-| 2 | 06–10 | Enterprise RAG | `v0.2.0` | 🟪⬜⬜⬜⬜ |
+| 2 | 06–10 | Enterprise RAG | `v0.2.0` | 🟪🟪⬜⬜⬜ |
 | 3 | 11–15 | Fine-Tuning | `v0.3.0` | ⬜⬜⬜⬜⬜ |
 | 4 | 16–20 | MCP e Agentes Autônomos | `v1.0.0` | ⬜⬜⬜⬜⬜ |
 
@@ -393,6 +457,7 @@ dotnet test
 | Avaliação | Leitura do conjunto, métricas e relatório, com um modelo simulado | ✅ 12 testes |
 | Resiliência | Nova tentativa, limite de tempo, cancelamento, streaming e registro de tokens, com falhas simuladas | ✅ 15 testes |
 | Ingestão | Cabeçalho dos documentos, divisão em trechos, sobreposição, linhas da citação e a base real | ✅ 16 testes |
+| Índice e busca | Vetores no SQLite, indexação incremental, troca de modelo e busca por cosseno | ✅ 10 testes |
 | Com modelo local | Resposta real pelo Ollama, conferida à mão e fora do CI | ✅ Feito no Dia 02 |
 | Classificação com modelo local | `mimir avaliar` com 20 chamados, fora do CI | ✅ 16 de 20 nos Dias 04 e 05 |
 | Qualidade do RAG | Perguntas com resposta esperada | ⏳ Dia 10 |
@@ -413,8 +478,8 @@ mimir-ai/
 │   └── assets/                    # ✅ banner
 ├── src/
 │   ├── Mimir.Core/                # ✅ assistente, classificador, prompts, avaliação e divisão em trechos · ⏳ busca e agente
-│   ├── Mimir.Infrastructure/      # ✅ provedores, resiliência e registro de uso · ⏳ SQLite e vetores
-│   └── Mimir.Cli/                 # ✅ perguntar, classificar, avaliar e ingerir pelo terminal
+│   ├── Mimir.Infrastructure/      # ✅ provedores, resiliência, registro de uso e índice de vetores no SQLite
+│   └── Mimir.Cli/                 # ✅ perguntar, classificar, avaliar, ingerir e buscar pelo terminal
 ├── tests/Mimir.Tests/             # ✅ testes unitários
 ├── training/                      # ⏳ Dia 13 — fine-tuning em Python
 ├── Mimir.slnx
@@ -436,7 +501,8 @@ Mantenho aqui um checklist vivo do que ainda vou incrementar neste repositório.
 - [x] Avaliação com conjunto de casos e relatório (Dia 04)
 - [x] Resiliência e registro de tokens (Dia 05) → `v0.1.0`
 - [x] Ingestão: documentos fictícios e divisão em trechos com a origem (Dia 06)
-- [ ] Enterprise RAG: embeddings, busca híbrida, citações e permissões (Dias 07–10) → `v0.2.0`
+- [x] Embeddings com `IEmbeddingGenerator` e índice de vetores no SQLite (Dia 07)
+- [ ] Enterprise RAG: busca híbrida, citações e permissões (Dias 08–10) → `v0.2.0`
 - [ ] Fine-Tuning: dados, linha de base, treino, exportação e comparação (Dias 11–15) → `v0.3.0`
 - [ ] Servidor MCP (Dias 16–17)
 - [ ] Agente autônomo e testes de segurança (Dias 18–19)
