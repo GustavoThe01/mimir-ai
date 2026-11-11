@@ -1,0 +1,16 @@
+{"id": "sig-01", "pergunta": "quero descansar um mês no fim do ano", "documento": "politica-de-ferias", "tipo": "significado"}
+{"id": "sig-02", "pergunta": "paguei um táxi na viagem, como recebo o dinheiro de volta", "documento": "reembolso-de-despesas", "tipo": "significado"}
+{"id": "sig-03", "pergunta": "posso trabalhar de casa?", "documento": "trabalho-remoto", "tipo": "significado"}
+{"id": "sig-04", "pergunta": "ganhei um presente caro de um fornecedor, posso aceitar?", "documento": "codigo-de-conduta", "tipo": "significado"}
+{"id": "sig-05", "pergunta": "esqueci minha senha e não consigo entrar", "documento": "senhas-e-acessos", "tipo": "significado"}
+{"id": "sig-06", "pergunta": "quanto ganha um desenvolvedor experiente", "documento": "faixas-salariais", "tipo": "significado"}
+{"id": "sig-07", "pergunta": "alguém me tratou mal no chat da empresa", "documento": "codigo-de-conduta", "tipo": "significado"}
+{"id": "sig-08", "pergunta": "a empresa ajuda a pagar a internet de quem fica em casa?", "documento": "trabalho-remoto", "tipo": "significado"}
+{"id": "ter-01", "pergunta": "LGPD", "documento": "contratos-com-fornecedores", "tipo": "termo exato"}
+{"id": "ter-02", "pergunta": "MFA", "documento": "senhas-e-acessos", "tipo": "termo exato"}
+{"id": "ter-03", "pergunta": "abono pecuniário", "documento": "politica-de-ferias", "tipo": "termo exato"}
+{"id": "ter-04", "pergunta": "CNPJ do fornecedor no comprovante", "documento": "reembolso-de-despesas", "tipo": "termo exato"}
+{"id": "ter-05", "pergunta": "prazo de 48 horas para avisar incidente", "documento": "contratos-com-fornecedores", "tipo": "termo exato"}
+{"id": "ter-06", "pergunta": "senha com 14 caracteres", "documento": "senhas-e-acessos", "tipo": "termo exato"}
+{"id": "ter-07", "pergunta": "reajuste de 5,2%", "documento": "faixas-salariais", "tipo": "termo exato"}
+{"id": "ter-08", "pergunta": "livro diário", "documento": "glossario-financeiro", "tipo": "termo exato"}

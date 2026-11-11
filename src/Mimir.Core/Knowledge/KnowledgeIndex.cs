@@ -19,6 +19,12 @@ public interface IChunkStore
     Task DeleteAsync(IReadOnlyCollection<string> ids, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<StoredChunk>> GetAllAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Busca textual pelos termos da pergunta, do mais relevante para o menos. Encontra códigos, siglas e números
+    /// exatos, que a busca por significado costuma perder.
+    /// </summary>
+    Task<IReadOnlyList<string>> SearchTextAsync(string query, int limit, CancellationToken cancellationToken);
 }
 
 /// <summary>Resultado de uma indexação.</summary>
