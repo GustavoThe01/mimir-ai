@@ -18,6 +18,12 @@ e [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Opções pagas de embeddings no README, incluindo o motivo de não haver opção Anthropic.
 - 10 testes novos.
 - Ingestão com o modelo real `paraphrase-multilingual` (768 dimensões): documento certo nas 7 perguntas do teste de fumaça, contra 5 do gerador por hashing. Resultado no README.
+- Tabela FTS5 `chunk_fts` no índice, sem acentos e com a seção pesando mais no BM25, sincronizada a cada gravação ou remoção de trecho e recriada se estiver vazia.
+- `HybridSearch`: busca por vetor, por texto ou híbrida, com Reciprocal Rank Fusion (k = 60) sobre os 20 primeiros de cada busca.
+- `mimir buscar --modo hibrida|vetor|texto` (híbrida por padrão) e `mimir avaliar-busca`, que compara as três buscas com hit@1, hit@3 e MRR.
+- Conjunto `datasets/busca.v1.jsonl`: 16 perguntas (8 pelo significado, 8 por termo exato) com o documento esperado.
+- Resultado real com o modelo local: híbrida com 14/16 em 1º e 16/16 entre os 3 primeiros (MRR 0,94), contra 13/16 do vetor e 13/16 do texto. Tabela no README.
+- 13 testes novos.
 
 ## [0.1.0] - 2026-11-08
 

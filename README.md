@@ -13,8 +13,8 @@ com o código pronto para trocar o modelo local por uma API paga mudando só a c
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-local-000000?style=flat-square&logo=ollama&logoColor=white)
 ![Custo](https://img.shields.io/badge/custo-R$_0-15803d?style=flat-square)
-![Roadmap](https://img.shields.io/badge/roadmap-dia_07_de_20-4338ca?style=flat-square)
-![Testes](https://img.shields.io/badge/testes-81_passando-15803d?style=flat-square)
+![Roadmap](https://img.shields.io/badge/roadmap-dia_08_de_20-4338ca?style=flat-square)
+![Testes](https://img.shields.io/badge/testes-94_passando-15803d?style=flat-square)
 
 </div>
 
@@ -190,7 +190,7 @@ do texto, da citação e dos perfis de acesso.
 - **Incremental:** o índice guarda o hash do texto e o nome do modelo. Rodar `ingerir` de novo só gera vetor para o que
   mudou; trocar de modelo gera tudo de novo, porque vetores de modelos diferentes não se comparam.
 - **Busca por significado:** `mimir buscar` gera o vetor da pergunta e compara com todos os trechos pelo cosseno.
-  Com dezenas de trechos, comparar com todos é exato e rápido; a busca híbrida com FTS5 entra no Dia 08.
+  Com dezenas de trechos, comparar com todos é exato e rápido. No Dia 08 ela virou uma das metades da busca híbrida (abaixo).
 - **Sem modelo para testar:** com `Embeddings__Provider=Fake`, um gerador por *feature hashing* cria vetores a partir
   das palavras, sem rede. Ele acha textos com palavras em comum, mas não entende sinônimos: é para testes e CI,
   não para uso real.
@@ -220,6 +220,45 @@ São 7 perguntas, então trato isso como um teste de fumaça, e não como uma me
 com mais perguntas e resposta esperada, é o Dia 10.
 
 Repare na pergunta sobre salário: o documento restrito de faixas salariais aparece para qualquer pessoa. O filtro por perfil, antes da busca, entra no Dia 10.
+
+### Busca híbrida: significado e termo exato juntos
+
+O teste de fumaça mostrou o forte dos vetores: entender "dinheiro de volta" como "reembolso". O fraco é o contrário:
+uma sigla ou um número exato, como "MFA" ou "48 horas", quase não muda o vetor da pergunta. Para isso existe a
+busca por texto. Cada trecho também entra numa tabela **FTS5** do SQLite, com acentos ignorados e o título da seção
+pesando mais que o corpo no ranking **BM25**. A tabela fica no mesmo banco dos vetores e é atualizada junto com eles.
+
+A busca híbrida roda as duas, pega os 20 primeiros de cada uma e junta os rankings com **Reciprocal Rank Fusion**:
+
+```text
+pontuação(trecho) = 1 / (60 + posição na busca por vetor) + 1 / (60 + posição na busca por texto)
+```
+
+O RRF só usa a **posição**, não a nota de cada busca. O cosseno e o BM25 estão em escalas diferentes, e somar as
+notas direto daria peso arbitrário a uma delas. Um trecho que aparece bem nas duas listas sobe; um que aparece só
+numa ainda entra no resultado.
+
+Para medir, montei um conjunto com 16 perguntas ([`datasets/busca.v1.jsonl`](datasets/busca.v1.jsonl)) e o documento
+que cada uma deve encontrar: 8 escritas **pelo significado** ("quero descansar um mês no fim do ano") e 8 com um
+**termo exato** do texto ("MFA", "abono pecuniário", "reajuste de 5,2%"). O comando `mimir avaliar-busca` roda as três
+buscas sobre o mesmo índice e calcula, para cada uma, em quantas perguntas o documento certo veio em 1º (hit@1), entre
+os 3 primeiros (hit@3), e o MRR (a média de 1 ÷ posição do documento certo).
+
+Resultado real, com o `paraphrase-multilingual` na GTX 1060:
+
+| Busca | hit@1 | hit@3 | MRR | Errou o 1º lugar em |
+|---|:---:|:---:|:---:|---|
+| Só vetor | 13/16 | 13/16 | 0,84 | 3 perguntas de termo exato ("MFA", "CNPJ...", "48 horas") |
+| Só texto (FTS5) | 13/16 | 13/16 | 0,83 | 3 perguntas de significado ("descansar...", "trabalhar de casa", "desenvolvedor experiente") |
+| **Híbrida (RRF)** | **14/16** | **16/16** | **0,94** | 2 perguntas de termo exato, mas com o documento certo entre os 3 primeiros |
+
+Cada busca isolada errou exatamente o tipo de pergunta que eu esperava, e erros diferentes. A híbrida não acertou
+o 1º lugar em todas, mas colocou o documento certo entre os 3 primeiros nas 16. Para o RAG isso é o que importa,
+porque o prompt vai receber mais de um trecho. A ingestão completa com o modelo levou 13,6 s.
+
+São 16 perguntas sobre 8 documentos: o número compara as três buscas entre si, mas não prova qualidade em escala.
+Os testes do CI usam o gerador por hashing e conferem a mecânica (FTS5 sincronizado, fusão, métricas), não esses
+números.
 
 ### Enterprise RAG: o que muda em relação a um RAG simples
 
@@ -349,6 +388,13 @@ dotnet run --project src/Mimir.Cli -- ingerir
 dotnet run --project src/Mimir.Cli -- buscar "como peço reembolso de um táxi?"
 ```
 
+Para escolher a busca (o padrão é a híbrida) e comparar as três no conjunto de 16 perguntas:
+
+```bash
+dotnet run --project src/Mimir.Cli -- buscar --modo texto "MFA"
+dotnet run --project src/Mimir.Cli -- avaliar-busca
+```
+
 Sem baixar modelo nenhum, com o gerador de teste:
 
 ```bash
@@ -451,7 +497,7 @@ O formato de dados de treino e a forma de usar o modelo ajustado no Mimir entram
 | Semana | Dias | Conceito | Release | Progresso |
 |---|---|---|:---:|---|
 | 1 | 01–05 | LLM | `v0.1.0` | 🟪🟪🟪🟪🟪 |
-| 2 | 06–10 | Enterprise RAG | `v0.2.0` | 🟪🟪⬜⬜⬜ |
+| 2 | 06–10 | Enterprise RAG | `v0.2.0` | 🟪🟪🟪⬜⬜ |
 | 3 | 11–15 | Fine-Tuning | `v0.3.0` | ⬜⬜⬜⬜⬜ |
 | 4 | 16–20 | MCP e Agentes Autônomos | `v1.0.0` | ⬜⬜⬜⬜⬜ |
 
@@ -472,6 +518,8 @@ dotnet test
 | Resiliência | Nova tentativa, limite de tempo, cancelamento, streaming e registro de tokens, com falhas simuladas | ✅ 15 testes |
 | Ingestão | Cabeçalho dos documentos, divisão em trechos, sobreposição, linhas da citação e a base real | ✅ 16 testes |
 | Índice e busca | Vetores no SQLite, indexação incremental, troca de modelo e busca por cosseno | ✅ 10 testes |
+| Busca híbrida | FTS5 sincronizado com o índice, busca por termo, fusão RRF, as três buscas e as métricas da avaliação | ✅ 13 testes |
+| Busca com modelo local | `mimir avaliar-busca` com 16 perguntas, fora do CI | ✅ híbrida: 14/16 em 1º, 16/16 entre os 3 primeiros |
 | Com modelo local | Resposta real pelo Ollama, conferida à mão e fora do CI | ✅ Feito no Dia 02 |
 | Classificação com modelo local | `mimir avaliar` com 20 chamados, fora do CI | ✅ 16 de 20 nos Dias 04 e 05 |
 | Qualidade do RAG | Perguntas com resposta esperada | ⏳ Dia 10 |
@@ -484,16 +532,16 @@ dotnet test
 ```
 mimir-ai/
 ├── .github/workflows/ci.yml       # ✅ build e testes, sem custo
-├── datasets/                      # ✅ chamados com o setor esperado
+├── datasets/                      # ✅ chamados com o setor esperado e perguntas de busca com o documento esperado
 ├── knowledge/                     # ✅ documentos fictícios da empresa
 ├── docs/
 │   ├── adr/                       # ✅ decisões de arquitetura
 │   ├── avaliacao/                 # ✅ relatórios de referência
 │   └── assets/                    # ✅ banner
 ├── src/
-│   ├── Mimir.Core/                # ✅ assistente, classificador, prompts, avaliação e divisão em trechos · ⏳ busca e agente
-│   ├── Mimir.Infrastructure/      # ✅ provedores, resiliência, registro de uso e índice de vetores no SQLite
-│   └── Mimir.Cli/                 # ✅ perguntar, classificar, avaliar, ingerir e buscar pelo terminal
+│   ├── Mimir.Core/                # ✅ assistente, classificador, prompts, avaliação, trechos e busca híbrida · ⏳ agente
+│   ├── Mimir.Infrastructure/      # ✅ provedores, resiliência, registro de uso e índice de vetores + FTS5 no SQLite
+│   └── Mimir.Cli/                 # ✅ perguntar, classificar, avaliar, ingerir, buscar e avaliar-busca pelo terminal
 ├── tests/Mimir.Tests/             # ✅ testes unitários
 ├── training/                      # ⏳ Dia 13 — fine-tuning em Python
 ├── Mimir.slnx

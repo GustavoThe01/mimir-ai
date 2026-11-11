@@ -16,10 +16,12 @@ const string ClassifyCommand = "classificar";
 const string EvaluateCommand = "avaliar";
 const string IngestCommand = "ingerir";
 const string SearchCommand = "buscar";
+const string EvaluateSearchCommand = "avaliar-busca";
+const string DefaultSearchDataset = "datasets/busca.v1.jsonl";
 const string DefaultDataset = "datasets/classificacao-chamados.v1.jsonl";
 const string DefaultKnowledge = "knowledge";
 
-var command = args.Length > 0 && args[0] is ClassifyCommand or EvaluateCommand or IngestCommand or SearchCommand ? args[0] : null;
+var command = args.Length > 0 && args[0] is ClassifyCommand or EvaluateCommand or IngestCommand or SearchCommand or EvaluateSearchCommand ? args[0] : null;
 var text = string.Join(' ', command is null ? args : args[1..]);
 
 var settings = new ConfigurationBuilder()
@@ -29,7 +31,7 @@ var settings = new ConfigurationBuilder()
     .Build();
 
 // Ingestão e busca usam o modelo de embeddings, não o modelo de conversa.
-if (command is IngestCommand or SearchCommand)
+if (command is IngestCommand or SearchCommand or EvaluateSearchCommand)
 {
     var embeddingOptions = settings.GetSection(EmbeddingOptions.SectionName).Get<EmbeddingOptions>() ?? new EmbeddingOptions();
     try
@@ -45,13 +47,20 @@ if (command is IngestCommand or SearchCommand)
                     new KnowledgeIndexer(generator, store, model));
             }
 
-            if (string.IsNullOrWhiteSpace(text))
+            var search = new HybridSearch(generator, store, model);
+            if (command == EvaluateSearchCommand)
             {
-                Console.Error.WriteLine($"Uso: mimir {SearchCommand} \"sua pergunta\"");
+                return await EvaluateSearchAsync(search, string.IsNullOrWhiteSpace(text) ? null : text.Trim(), model);
+            }
+
+            var (mode, question) = ParseSearchArguments(args[1..]);
+            if (string.IsNullOrWhiteSpace(question))
+            {
+                Console.Error.WriteLine($"Uso: mimir {SearchCommand} [--modo hibrida|vetor|texto] \"sua pergunta\"");
                 return 1;
             }
 
-            return await SearchAsync(text, new SemanticSearch(generator, store, model));
+            return await SearchAsync(question, mode, search);
         }
     }
     catch (Exception exception) when (exception is FormatException or IOException or InvalidOperationException)
@@ -74,7 +83,8 @@ if (command != EvaluateCommand && string.IsNullOrWhiteSpace(text))
     Console.WriteLine($"  mimir {ClassifyCommand} \"texto do chamado\"");
     Console.WriteLine($"  mimir {EvaluateCommand} [arquivo.jsonl]   (padrão: {DefaultDataset})");
     Console.WriteLine($"  mimir {IngestCommand} [pasta]            (padrão: {DefaultKnowledge})");
-    Console.WriteLine($"  mimir {SearchCommand} \"sua pergunta\"");
+    Console.WriteLine($"  mimir {SearchCommand} [--modo hibrida|vetor|texto] \"sua pergunta\"");
+    Console.WriteLine($"  mimir {EvaluateSearchCommand} [arquivo.jsonl]   (padrão: {DefaultSearchDataset})");
     return 1;
 }
 
@@ -169,12 +179,48 @@ static async Task<int> IngestAsync(string folder, KnowledgeIndexer indexer)
     return 0;
 }
 
-static async Task<int> SearchAsync(string query, SemanticSearch search)
+static (SearchMode Mode, string Question) ParseSearchArguments(string[] arguments)
 {
-    var hits = await search.SearchAsync(query);
+    if (arguments.Length >= 2 && arguments[0] == "--modo")
+    {
+        var mode = arguments[1] switch
+        {
+            "vetor" => SearchMode.Vector,
+            "texto" => SearchMode.Text,
+            "hibrida" => SearchMode.Hybrid,
+            _ => throw new InvalidOperationException($"Modo desconhecido: {arguments[1]}. Use hibrida, vetor ou texto."),
+        };
+        return (mode, string.Join(' ', arguments[2..]));
+    }
+
+    return (SearchMode.Hybrid, string.Join(' ', arguments));
+}
+
+static async Task<int> SearchAsync(string query, SearchMode mode, HybridSearch search)
+{
+    var hits = await search.SearchAsync(query, mode);
+    Console.WriteLine($"{"RRF",-7} {"Vetor",5} {"Texto",5}  Trecho");
     foreach (var hit in hits)
     {
-        Console.WriteLine($"{hit.Score:0.000}  {hit.Chunk.Citation,-38} {hit.Chunk.Section}");
+        Console.WriteLine($"{hit.Score:0.0000}  {Rank(hit.VectorRank),5} {Rank(hit.TextRank),5}  {hit.Chunk.Citation,-38} {hit.Chunk.Section}");
+    }
+
+    return 0;
+
+    static string Rank(int? rank) => rank?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-";
+}
+
+static async Task<int> EvaluateSearchAsync(HybridSearch search, string? datasetPath, string model)
+{
+    var path = datasetPath ?? Path.Combine(AppContext.BaseDirectory, DefaultSearchDataset);
+    var cases = SearchEvaluation.Parse(await File.ReadAllTextAsync(path));
+    Console.WriteLine($"Avaliando {cases.Count} perguntas com {model}...");
+    Console.WriteLine();
+    Console.WriteLine($"{"Busca",-8} {"Acerto no 1º",13} {"Entre os 3",11} {"MRR",6}  Errou o 1º");
+    foreach (var score in await SearchEvaluation.RunAsync(search, cases))
+    {
+        var name = score.Mode switch { SearchMode.Vector => "vetor", SearchMode.Text => "texto", _ => "híbrida" };
+        Console.WriteLine($"{name,-8} {score.HitAt1,7} de {score.Cases,-3} {score.HitAt3,5} de {score.Cases,-3} {score.Mrr,6:0.00}  {string.Join(", ", score.Missed)}");
     }
 
     return 0;

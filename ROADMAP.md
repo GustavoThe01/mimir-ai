@@ -41,8 +41,8 @@
 - [x] Documentar as opções pagas de embeddings no README
 
 ### Dia 08 — Busca híbrida
-- [ ] FTS5 + vetores, com fusão dos rankings
-- [ ] Comparar a busca híbrida com cada busca isolada
+- [x] FTS5 + vetores, com fusão dos rankings
+- [x] Comparar a busca híbrida com cada busca isolada
 
 ### Dia 09 — Respostas com citação
 - [ ] Prompt com os trechos encontrados e citação obrigatória
