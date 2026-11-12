@@ -17,11 +17,12 @@ const string EvaluateCommand = "avaliar";
 const string IngestCommand = "ingerir";
 const string SearchCommand = "buscar";
 const string EvaluateSearchCommand = "avaliar-busca";
+const string AnswerCommand = "responder";
 const string DefaultSearchDataset = "datasets/busca.v1.jsonl";
 const string DefaultDataset = "datasets/classificacao-chamados.v1.jsonl";
 const string DefaultKnowledge = "knowledge";
 
-var command = args.Length > 0 && args[0] is ClassifyCommand or EvaluateCommand or IngestCommand or SearchCommand or EvaluateSearchCommand ? args[0] : null;
+var command = args.Length > 0 && args[0] is ClassifyCommand or EvaluateCommand or IngestCommand or SearchCommand or EvaluateSearchCommand or AnswerCommand ? args[0] : null;
 var text = string.Join(' ', command is null ? args : args[1..]);
 
 var settings = new ConfigurationBuilder()
@@ -79,7 +80,8 @@ if (command is IngestCommand or SearchCommand or EvaluateSearchCommand)
 if (command != EvaluateCommand && string.IsNullOrWhiteSpace(text))
 {
     Console.WriteLine("Uso:");
-    Console.WriteLine("  mimir \"sua pergunta\"");
+    Console.WriteLine("  mimir \"sua pergunta\"                 (só o modelo, sem a base)");
+    Console.WriteLine($"  mimir {AnswerCommand} \"sua pergunta\"   (com a base de conhecimento e citação da fonte)");
     Console.WriteLine($"  mimir {ClassifyCommand} \"texto do chamado\"");
     Console.WriteLine($"  mimir {EvaluateCommand} [arquivo.jsonl]   (padrão: {DefaultDataset})");
     Console.WriteLine($"  mimir {IngestCommand} [pasta]            (padrão: {DefaultKnowledge})");
@@ -113,6 +115,9 @@ try
             Console.WriteLine($"Motivo: {classification.Reason}");
             PrintUsage(usage);
             return 0;
+
+        case AnswerCommand:
+            return await AnswerAsync(chatClient, settings, text.Trim(), usage);
 
         case EvaluateCommand:
             return await EvaluateAsync(chatClient, options, usage, string.IsNullOrWhiteSpace(text) ? null : text.Trim());
@@ -224,6 +229,42 @@ static async Task<int> EvaluateSearchAsync(HybridSearch search, string? datasetP
     }
 
     return 0;
+}
+
+static async Task<int> AnswerAsync(IChatClient chatClient, IConfiguration settings, string question, UsageTracker usage)
+{
+    // A pergunta usa os dois modelos: o de embeddings para buscar os trechos e o de conversa para responder.
+    var embeddingOptions = settings.GetSection(EmbeddingOptions.SectionName).Get<EmbeddingOptions>() ?? new EmbeddingOptions();
+    var (generator, model) = EmbeddingGeneratorFactory.Create(embeddingOptions, Environment.GetEnvironmentVariable);
+    using (generator)
+    {
+        var retriever = new HybridRetriever(new HybridSearch(generator, new SqliteChunkStore(embeddingOptions.Database), model));
+        var answer = await new GroundedAssistant(chatClient, retriever).AnswerAsync(question);
+
+        Console.WriteLine(answer.Text);
+        if (answer.Answered)
+        {
+            Console.WriteLine();
+            Console.WriteLine("Fontes:");
+            foreach (var source in answer.Sources)
+            {
+                Console.WriteLine($"  [{source.Number}] {source.Citation} — {source.Section}");
+            }
+        }
+        else
+        {
+            var reason = answer.Reason switch
+            {
+                NoAnswerReason.NoSourcesFound => "a busca não encontrou nenhum trecho; rode 'mimir ingerir' se o índice estiver vazio",
+                NoAnswerReason.SourcesDoNotAnswer => "o modelo leu os trechos encontrados e eles não respondem à pergunta",
+                _ => "o modelo tentou responder sem citar um trecho válido, e a resposta foi descartada",
+            };
+            Console.Error.WriteLine($"({reason})");
+        }
+
+        PrintUsage(usage);
+        return 0;
+    }
 }
 
 static void PrintUsage(UsageTracker usage)

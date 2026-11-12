@@ -10,6 +10,8 @@ namespace Mimir.Core.Llm;
 public static class PromptLibrary
 {
     public const string Answer = "answer.v1.txt";
+    public const string GroundedAnswer = "grounded-answer.v1.txt";
+    public const string GroundedAnswerSchema = "grounded-answer.v1.schema.json";
     public const string TicketClassification = "ticket-classification.v1.txt";
     public const string TicketClassificationSchema = "ticket-classification.v1.schema.json";
 
