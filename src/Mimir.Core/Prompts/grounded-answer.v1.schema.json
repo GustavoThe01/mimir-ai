@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "answered": {
+      "type": "boolean"
+    },
+    "answer": {
+      "type": "string"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "maxItems": 10
+    }
+  },
+  "required": ["answered", "answer", "sources"],
+  "additionalProperties": false
+}

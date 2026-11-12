@@ -45,8 +45,8 @@
 - [x] Comparar a busca híbrida com cada busca isolada
 
 ### Dia 09 — Respostas com citação
-- [ ] Prompt com os trechos encontrados e citação obrigatória
-- [ ] Responder "não sei" quando não houver fonte
+- [x] Prompt com os trechos encontrados e citação obrigatória
+- [x] Responder "não sei" quando não houver fonte
 
 ### Dia 10 — Permissões e qualidade
 - [ ] Filtro por perfil antes de montar o prompt

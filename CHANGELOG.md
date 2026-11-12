@@ -24,6 +24,12 @@ e [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Conjunto `datasets/busca.v1.jsonl`: 16 perguntas (8 pelo significado, 8 por termo exato) com o documento esperado.
 - Resultado real com o modelo local: híbrida com 14/16 em 1º e 16/16 entre os 3 primeiros (MRR 0,94), contra 13/16 do vetor e 13/16 do texto. Tabela no README.
 - 13 testes novos.
+- `GroundedAssistant` e o comando `mimir responder`: busca os 4 trechos mais relevantes, manda ao modelo numerados e exige a lista das fontes usadas.
+- Prompt versionado `grounded-answer.v1.txt` e schema `grounded-answer.v1.schema.json` (respondeu, resposta e fontes).
+- "Não sei" garantido pelo código: sem trecho encontrado (sem chamar o modelo), quando o modelo diz que os trechos não respondem, ou quando a resposta não cita um trecho válido depois da nova tentativa.
+- O validador de JSON Schema passa a aceitar booleano, inteiro (`minimum`) e lista (`items`, `maxItems`).
+- Teste com os modelos locais: 3 respostas certas com fonte, 3 "não sei" corretos e 1 "não sei" por falha da busca (documentado no README).
+- 12 testes novos (106 no total).
 
 ## [0.1.0] - 2026-11-08
 
