@@ -42,19 +42,29 @@ public class GroundedAssistantTests
         }
     }
 
+    /// <summary>Devolve os trechos que recebeu, sem filtrar perfil: simula uma busca com defeito.</summary>
     private sealed class FixedRetriever(params KnowledgeChunk[] chunks) : IChunkRetriever
     {
         public int? LastTop { get; private set; }
 
-        public Task<IReadOnlyList<KnowledgeChunk>> RetrieveAsync(string question, int top, CancellationToken cancellationToken)
+        public AccessScope? LastScope { get; private set; }
+
+        public Task<IReadOnlyList<KnowledgeChunk>> RetrieveAsync(string question, int top, AccessScope scope, CancellationToken cancellationToken)
         {
             LastTop = top;
+            LastScope = scope;
             return Task.FromResult<IReadOnlyList<KnowledgeChunk>>(chunks.Take(top).ToList());
         }
     }
 
-    private static KnowledgeChunk Chunk(string document, string section, string text, int start) =>
-        new($"{document}#{start}", document, "Política " + document, section, text, start, start + 2, Department.Rh, ["todos"], "hash");
+    private static readonly AccessScope Anyone = AccessScope.Public;
+
+    private static KnowledgeChunk Chunk(string document, string section, string text, int start, params string[] access) =>
+        new($"{document}#{start}", document, "Política " + document, section, text, start, start + 2, Department.Rh,
+            access.Length == 0 ? ["todos"] : access, "hash");
+
+    private static readonly KnowledgeChunk Salaries = Chunk("faixas-salariais", "Engenharia",
+        "Desenvolvimento pleno: de R$ 7.000 a R$ 10.500.", 14, "rh", "diretoria");
 
     private static readonly KnowledgeChunk Vacation = Chunk("politica-de-ferias", "Divisão em períodos",
         "As férias podem ser divididas em até três períodos, e um deles precisa ter pelo menos 14 dias.", 12);
@@ -71,7 +81,7 @@ public class GroundedAssistantTests
         var chat = new ScriptedChatClient(Json(true, "Em até três períodos, um deles com pelo menos 14 dias [1].", 1));
         var assistant = new GroundedAssistant(chat, new FixedRetriever(Vacation, Remote));
 
-        var answer = await assistant.AnswerAsync("posso dividir as férias?", cancellationToken: _token);
+        var answer = await assistant.AnswerAsync("posso dividir as férias?", Anyone, cancellationToken: _token);
 
         Assert.True(answer.Answered);
         Assert.Contains("14 dias", answer.Text, StringComparison.Ordinal);
@@ -87,7 +97,7 @@ public class GroundedAssistantTests
         var chat = new ScriptedChatClient(Json(true, "R$ 150 por mês [2].", 2));
         var retriever = new FixedRetriever(Vacation, Remote);
 
-        await new GroundedAssistant(chat, retriever).AnswerAsync("ajuda de custo", topChunks: 2, cancellationToken: _token);
+        await new GroundedAssistant(chat, retriever).AnswerAsync("ajuda de custo", Anyone, topChunks: 2, cancellationToken: _token);
 
         var user = chat.LastMessages.Single(m => m.Role == ChatRole.User).Text;
         Assert.Contains("<fonte numero=\"1\">\nDivisão em períodos\nAs férias", user, StringComparison.Ordinal);
@@ -103,7 +113,7 @@ public class GroundedAssistantTests
     {
         var chat = new ScriptedChatClient();
 
-        var answer = await new GroundedAssistant(chat, new FixedRetriever()).AnswerAsync("qual o cardápio do refeitório?", cancellationToken: _token);
+        var answer = await new GroundedAssistant(chat, new FixedRetriever()).AnswerAsync("qual o cardápio do refeitório?", Anyone, cancellationToken: _token);
 
         Assert.False(answer.Answered);
         Assert.Equal(GroundedAnswer.DontKnow, answer.Text);
@@ -116,7 +126,7 @@ public class GroundedAssistantTests
     {
         var chat = new ScriptedChatClient(Json(false, "Acho que o refeitório abre às 11h.", []));
 
-        var answer = await new GroundedAssistant(chat, new FixedRetriever(Vacation)).AnswerAsync("que horas abre o refeitório?", cancellationToken: _token);
+        var answer = await new GroundedAssistant(chat, new FixedRetriever(Vacation)).AnswerAsync("que horas abre o refeitório?", Anyone, cancellationToken: _token);
 
         Assert.False(answer.Answered);
         Assert.Equal(GroundedAnswer.DontKnow, answer.Text);
@@ -134,7 +144,7 @@ public class GroundedAssistantTests
     {
         var chat = new ScriptedChatClient(invalid, invalid);
 
-        var answer = await new GroundedAssistant(chat, new FixedRetriever(Vacation)).AnswerAsync("férias", cancellationToken: _token);
+        var answer = await new GroundedAssistant(chat, new FixedRetriever(Vacation)).AnswerAsync("férias", Anyone, cancellationToken: _token);
 
         Assert.Equal(2, chat.Calls);
         Assert.False(answer.Answered);
@@ -147,7 +157,7 @@ public class GroundedAssistantTests
     {
         var chat = new ScriptedChatClient(Json(true, "São 14 dias.", []), Json(true, "Pelo menos 14 dias [1].", 1));
 
-        var answer = await new GroundedAssistant(chat, new FixedRetriever(Vacation)).AnswerAsync("férias", cancellationToken: _token);
+        var answer = await new GroundedAssistant(chat, new FixedRetriever(Vacation)).AnswerAsync("férias", Anyone, cancellationToken: _token);
 
         Assert.True(answer.Answered);
         Assert.Equal(2, chat.Calls);
@@ -158,10 +168,48 @@ public class GroundedAssistantTests
     {
         var chat = new ScriptedChatClient(Json(true, "Férias [2] e ajuda de custo [1].", 2, 1, 2));
 
-        var answer = await new GroundedAssistant(chat, new FixedRetriever(Remote, Vacation)).AnswerAsync("benefícios", cancellationToken: _token);
+        var answer = await new GroundedAssistant(chat, new FixedRetriever(Remote, Vacation)).AnswerAsync("benefícios", Anyone, cancellationToken: _token);
 
         Assert.Equal([1, 2], answer.Sources.Select(s => s.Number));
         Assert.Equal("trabalho-remoto.md#L20-L22", answer.Sources[0].Citation);
+    }
+
+    [Fact]
+    public async Task RestrictedChunk_NeverReachesTheModel_EvenIfTheSearchReturnsIt()
+    {
+        var chat = new ScriptedChatClient(Json(true, "Pelo menos 14 dias [1].", 1));
+        var retriever = new FixedRetriever(Salaries, Vacation);
+
+        var answer = await new GroundedAssistant(chat, retriever).AnswerAsync("salário e férias", Anyone, cancellationToken: _token);
+
+        var prompt = string.Join("\n", chat.LastMessages.Select(m => m.Text));
+        Assert.DoesNotContain("10.500", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("faixas-salariais", prompt, StringComparison.Ordinal);
+        Assert.Contains("14 dias", prompt, StringComparison.Ordinal);
+        Assert.Equal("politica-de-ferias.md#L12-L14", Assert.Single(answer.Sources).Citation);
+        Assert.Same(Anyone, retriever.LastScope);
+    }
+
+    [Fact]
+    public async Task WhenEveryChunkIsRestricted_TheAnswerIsDontKnow_WithoutCallingTheModel()
+    {
+        var chat = new ScriptedChatClient();
+
+        var answer = await new GroundedAssistant(chat, new FixedRetriever(Salaries)).AnswerAsync("quanto ganha um pleno?", Anyone, cancellationToken: _token);
+
+        Assert.Equal(NoAnswerReason.NoSourcesFound, answer.Reason);
+        Assert.Equal(0, chat.Calls);
+    }
+
+    [Fact]
+    public async Task WithTheRightProfile_TheRestrictedChunkIsUsed()
+    {
+        var chat = new ScriptedChatClient(Json(true, "De R$ 7.000 a R$ 10.500 [1].", 1));
+
+        var answer = await new GroundedAssistant(chat, new FixedRetriever(Salaries)).AnswerAsync("quanto ganha um pleno?", AccessScope.For("rh"), cancellationToken: _token);
+
+        Assert.True(answer.Answered);
+        Assert.Contains("10.500", chat.LastMessages.Single(m => m.Role == ChatRole.User).Text, StringComparison.Ordinal);
     }
 
     [Fact]

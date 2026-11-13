@@ -84,13 +84,18 @@ public sealed class KnowledgeIndexer(IEmbeddingGenerator<string, Embedding<float
 /// </remarks>
 public sealed class SemanticSearch(IEmbeddingGenerator<string, Embedding<float>> generator, IChunkStore store, string model)
 {
-    public async Task<IReadOnlyList<SearchHit>> SearchAsync(string query, int top = 5, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<SearchHit>> SearchAsync(string query, int top = 5, CancellationToken cancellationToken = default) =>
+        SearchAsync(query, top, scope: null, cancellationToken);
+
+    /// <param name="scope">Quando informado, só os trechos que o escopo pode ler entram na comparação.</param>
+    public async Task<IReadOnlyList<SearchHit>> SearchAsync(string query, int top, AccessScope? scope, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         ArgumentOutOfRangeException.ThrowIfLessThan(top, 1);
 
         var stored = await store.GetAllAsync(cancellationToken);
         var comparable = stored.Where(item => item.Model == model).ToList();
+        var readable = scope is null ? comparable : comparable.Where(item => scope.CanRead(item.Chunk)).ToList();
         if (comparable.Count == 0)
         {
             throw new InvalidOperationException($"O índice não tem trechos do modelo {model}. Rode mimir ingerir antes de buscar.");
@@ -98,7 +103,7 @@ public sealed class SemanticSearch(IEmbeddingGenerator<string, Embedding<float>>
 
         // Vetores de modelos diferentes não são comparáveis: cada modelo tem o próprio espaço.
         var question = await generator.GenerateVectorAsync(query.Trim(), cancellationToken: cancellationToken);
-        return comparable
+        return readable
             .Select(item => new SearchHit(item.Chunk, VectorMath.Cosine(question.Span, item.Vector.Span)))
             .OrderByDescending(hit => hit.Score)
             .ThenBy(hit => hit.Chunk.Id, StringComparer.Ordinal)

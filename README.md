@@ -13,8 +13,8 @@ com o código pronto para trocar o modelo local por uma API paga mudando só a c
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-local-000000?style=flat-square&logo=ollama&logoColor=white)
 ![Custo](https://img.shields.io/badge/custo-R$_0-15803d?style=flat-square)
-![Roadmap](https://img.shields.io/badge/roadmap-dia_09_de_20-4338ca?style=flat-square)
-![Testes](https://img.shields.io/badge/testes-106_passando-15803d?style=flat-square)
+![Roadmap](https://img.shields.io/badge/roadmap-dia_10_de_20-4338ca?style=flat-square)
+![Testes](https://img.shields.io/badge/testes-126_passando-15803d?style=flat-square)
 
 </div>
 
@@ -69,7 +69,7 @@ Defini duas regras para ele: **não gastar nada** para construí-lo e **não dep
 | Conceito | Como vou aplicar | De graça | Situação |
 |---|---|---|---|
 | **LLM** | Responder perguntas através de uma interface única, com o provedor definido na configuração | Ollama + modelo aberto | ✅ Responde com modelo local, em streaming e com saída estruturada, com avaliação (80% de acerto em 20 casos), limite de tempo, nova tentativa e registro de tokens |
-| **Enterprise RAG** | Responder com base nos documentos da empresa, citando a fonte e respeitando a permissão de quem pergunta | Embeddings locais + SQLite | 🟡 Ingestão (8 documentos, 28 trechos), busca híbrida e respostas com citação prontas; permissão por perfil no Dia 10 |
+| **Enterprise RAG** | Responder com base nos documentos da empresa, citando a fonte e respeitando a permissão de quem pergunta | Embeddings locais + SQLite | ✅ Concluído na `v0.2.0`: busca híbrida, citação obrigatória, filtro por perfil e avaliação com 16 perguntas |
 | **Fine-Tuning** | Treinar um modelo pequeno para classificar chamados por setor e medir o ganho contra o modelo sem ajuste | Script de treino em GPU local ou Google Colab gratuito | ⏳ Dias 11–15 |
 | **MCP** | Expor a busca e os chamados como ferramentas, para qualquer cliente compatível usar | SDK oficial do MCP para C# | ⏳ Dias 16–17 |
 | **Agentes Autônomos** | Agente que faz a triagem de um chamado consultando as ferramentas MCP, com limite de passos e aprovação humana | Modelo local com suporte a ferramentas | ⏳ Dias 18–19 |
@@ -219,7 +219,7 @@ que aprendeu o significado liga uma coisa à outra. Os testes e o CI continuam c
 São 7 perguntas, então trato isso como um teste de fumaça, e não como uma medida de qualidade. A avaliação do RAG,
 com mais perguntas e resposta esperada, é o Dia 10.
 
-Repare na pergunta sobre salário: o documento restrito de faixas salariais aparece para qualquer pessoa. O filtro por perfil, antes da busca, entra no Dia 10.
+Repare na pergunta sobre salário: o documento restrito de faixas salariais aparece para qualquer pessoa. Isso valia até o Dia 09; o filtro por perfil do Dia 10 está mais abaixo.
 
 ### Busca híbrida: significado e termo exato juntos
 
@@ -294,10 +294,77 @@ A última linha é um erro, e foi da busca, não do modelo. O documento de senha
 os sistemas, mas com essa frase a busca híbrida não trouxe o trecho entre os 4 primeiros: as palavras comuns da
 pergunta ("o", "que", "é", "quando") pesaram mais que a sigla. O modelo recebeu trechos sobre outros assuntos e,
 corretamente, não inventou uma resposta. Errar com "não sei" é o comportamento que eu quero; acertar essa pergunta é
-trabalho da busca, e entra na avaliação do RAG do Dia 10.
+trabalho da busca.
 
 Cada resposta levou de 3 a 5 segundos depois que o modelo já estava carregado (a primeira chamada levou 24,8 s,
 contando a carga do modelo na GPU), com cerca de 700 tokens de entrada e até 58 de saída.
+
+### Permissões: o documento restrito nunca chega ao modelo
+
+Cada documento declara no cabeçalho os perfis que podem lê-lo (`acesso: [rh, diretoria]`). Quem pergunta tem um
+[`AccessScope`](src/Mimir.Core/Knowledge/AccessScope.cs): os seus perfis, mais `todos`. O filtro acontece **antes** do
+prompt, em duas camadas:
+
+1. **Na busca.** Vetor, texto e fusão só consideram os trechos que o escopo pode ler. Um documento restrito não ocupa
+   vaga no resultado de quem não pode lê-lo.
+2. **No assistente.** Antes de montar o prompt, o [`GroundedAssistant`](src/Mimir.Core/Llm/GroundedAssistant.cs)
+   confere cada trecho de novo. Se uma busca com defeito devolver um trecho restrito, ele é descartado ali.
+
+Por que antes, e não depois: pedir ao modelo para "não revelar" um documento seria confiar nele para guardar segredo,
+e um prompt bem montado consegue tirar qualquer coisa que esteja no contexto. O que não está no contexto não vaza.
+O escopo é obrigatório na assinatura de `AnswerAsync`: não existe resposta sem decidir o que a pessoa pode ler.
+
+Um teste monta uma busca "com defeito", que devolve o trecho de faixas salariais para um perfil sem acesso, e confere
+que nem o valor nem o nome do documento aparecem no prompt enviado ao modelo. Perfil digitado errado
+(`--perfil financas`) é erro, e não um acesso negado em silêncio.
+
+```bash
+dotnet run --project src/Mimir.Cli -- responder "qual a faixa salarial de um desenvolvedor pleno?"
+dotnet run --project src/Mimir.Cli -- responder --perfil rh "qual a faixa salarial de um desenvolvedor pleno?"
+```
+
+A primeira responde "não sei"; a segunda, "R$ 7.000 a R$ 10.500", citando `faixas-salariais.md#L14`.
+
+### Avaliação do RAG: 16 perguntas, 16 certas
+
+O comando `mimir avaliar-rag` roda o RAG inteiro (busca com permissão, modelo e conferência da citação) sobre
+[`datasets/rag.v1.jsonl`](datasets/rag.v1.jsonl). Cada pergunta tem os perfis de quem pergunta, o documento que
+deve ser citado (ou nenhum, quando o certo é "não sei") e um fato que precisa estar na resposta:
+
+| Grupo | Perguntas | O que precisa acontecer |
+|---|:---:|---|
+| Documentos públicos | 8 | Citar o documento certo, com o fato certo na resposta (14 caracteres, R$ 150, 30 dias...) |
+| Fora da base | 2 | "Não sei" (refeitório, Copa do Mundo) |
+| Documento restrito sem o perfil | 3 | "Não sei": sem perfil, com perfil `ti` pedindo salário, sem perfil pedindo contrato |
+| Documento restrito com o perfil | 3 | `rh` e `diretoria` leem salários; `juridico` lê contratos |
+
+Cada resposta cai numa categoria: certa, "não sei" certo, fato ausente, fonte errada, "não sei" indevido, respondeu
+quando não devia, e **vazamento** (citou um documento que o perfil não pode ler). Vazamento faz o comando sair com erro.
+
+Resultado real, com `llama3.2:3b` e `paraphrase-multilingual` na GTX 1060, rodado duas vezes seguidas com o mesmo
+resultado:
+
+| Categoria | Perguntas |
+|---|:---:|
+| ✅ Certa (documento e fato) | 11 |
+| ✅ "Não sei" certo | 5 |
+| Fonte errada, fato ausente, "não sei" indevido, respondeu sem dever | 0 |
+| **Vazamento** | **0** |
+
+Na primeira rodada, as 16 chamadas ao modelo somaram 28,5 s, dos quais 18,2 s foram da primeira pergunta (a carga do
+modelo na GPU); na segunda, com o modelo já carregado, 20,3 s. Cada rodada usou 10.526 tokens de entrada e 548 de saída.
+Custo: zero.
+
+O que esse número não diz:
+
+- **Fui eu que escrevi as perguntas**, olhando os documentos. 16 de 16 mostra que o caminho inteiro funciona, não que o
+  RAG acerta qualquer pergunta. Um conjunto escrito por outra pessoa, com outras palavras, seria mais duro.
+- **A formulação importa.** "o segundo fator de autenticação é obrigatório?" acerta; "o que é MFA e quando é
+  obrigatório?" (o caso da seção anterior) continua dando "não sei", porque a busca não traz o trecho. Melhorar a busca
+  para perguntas assim é o próximo passo do RAG.
+- **A citação é conferida pelo documento, não pela frase.** Na pergunta de salário com o perfil `rh`, o modelo citou
+  o documento certo e também um trecho do glossário que não ajudava. A avaliação aceita, porque o documento esperado
+  está entre as fontes.
 
 ### Enterprise RAG: o que muda em relação a um RAG simples
 
@@ -336,7 +403,7 @@ Uma empresa fictícia tem políticas internas, manuais e chamados. Todos os docu
 |---|---|:---:|
 | 💬 **Perguntas** | Pergunta em linguagem natural pelo terminal, com resposta em streaming | ✅ 02 |
 | 📚 **Base de conhecimento** | Importa documentos, divide em trechos e indexa | ✅ 06 (índice nos dias 07–08) |
-| 🔐 **Permissões** | Cada documento tem os perfis que podem lê-lo | 10 |
+| 🔐 **Permissões** | Cada documento tem os perfis que podem lê-lo, e só eles chegam ao modelo | ✅ 10 |
 | 🏷️ **Classificação** | Sugere o setor responsável por um chamado | ✅ 03 (fine-tuning nos dias 11–15) |
 | 🔌 **Servidor MCP** | Ferramentas para clientes compatíveis | 16–17 |
 | 🤖 **Agente de triagem** | Lê o chamado, pesquisa, propõe e pede aprovação | 18–19 |
@@ -431,6 +498,8 @@ Para perguntar à base de conhecimento, com a resposta citando a fonte (precisa 
 
 ```bash
 dotnet run --project src/Mimir.Cli -- responder "posso dividir minhas férias em quantas partes?"
+dotnet run --project src/Mimir.Cli -- responder --perfil rh "qual a faixa salarial de um desenvolvedor pleno?"
+dotnet run --project src/Mimir.Cli -- avaliar-rag
 ```
 
 Para escolher a busca (o padrão é a híbrida) e comparar as três no conjunto de 16 perguntas:
@@ -542,7 +611,7 @@ O formato de dados de treino e a forma de usar o modelo ajustado no Mimir entram
 | Semana | Dias | Conceito | Release | Progresso |
 |---|---|---|:---:|---|
 | 1 | 01–05 | LLM | `v0.1.0` | 🟪🟪🟪🟪🟪 |
-| 2 | 06–10 | Enterprise RAG | `v0.2.0` | 🟪🟪🟪🟪⬜ |
+| 2 | 06–10 | Enterprise RAG | `v0.2.0` | 🟪🟪🟪🟪🟪 |
 | 3 | 11–15 | Fine-Tuning | `v0.3.0` | ⬜⬜⬜⬜⬜ |
 | 4 | 16–20 | MCP e Agentes Autônomos | `v1.0.0` | ⬜⬜⬜⬜⬜ |
 
@@ -568,7 +637,8 @@ dotnet test
 | Busca com modelo local | `mimir avaliar-busca` com 16 perguntas, fora do CI | ✅ híbrida: 14/16 em 1º, 16/16 entre os 3 primeiros |
 | Com modelo local | Resposta real pelo Ollama, conferida à mão e fora do CI | ✅ Feito no Dia 02 |
 | Classificação com modelo local | `mimir avaliar` com 20 chamados, fora do CI | ✅ 16 de 20 nos Dias 04 e 05 |
-| Qualidade do RAG | Perguntas com resposta esperada | ⏳ Dia 10 |
+| Permissões e avaliação do RAG | Escopo de perfis, filtro nas três buscas, trecho restrito fora do prompt e as categorias da avaliação | ✅ 20 testes |
+| Qualidade do RAG com modelo local | `mimir avaliar-rag` com 16 perguntas, fora do CI | ✅ 16 de 16, sem vazamento |
 | Segurança do agente | Limite de passos, aprovação e prompt injection | ⏳ Dia 19 |
 
 ---
@@ -610,7 +680,7 @@ Mantenho aqui um checklist vivo do que ainda vou incrementar neste repositório.
 - [x] Resiliência e registro de tokens (Dia 05) → `v0.1.0`
 - [x] Ingestão: documentos fictícios e divisão em trechos com a origem (Dia 06)
 - [x] Embeddings com `IEmbeddingGenerator` e índice de vetores no SQLite (Dia 07)
-- [ ] Enterprise RAG: busca híbrida, citações e permissões (Dias 08–10) → `v0.2.0`
+- [x] Enterprise RAG: busca híbrida, citações, permissões e avaliação (Dias 08–10) → `v0.2.0`
 - [ ] Fine-Tuning: dados, linha de base, treino, exportação e comparação (Dias 11–15) → `v0.3.0`
 - [ ] Servidor MCP (Dias 16–17)
 - [ ] Agente autônomo e testes de segurança (Dias 18–19)
