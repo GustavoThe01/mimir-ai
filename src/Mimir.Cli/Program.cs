@@ -18,11 +18,13 @@ const string IngestCommand = "ingerir";
 const string SearchCommand = "buscar";
 const string EvaluateSearchCommand = "avaliar-busca";
 const string AnswerCommand = "responder";
+const string EvaluateRagCommand = "avaliar-rag";
+const string DefaultRagDataset = "datasets/rag.v1.jsonl";
 const string DefaultSearchDataset = "datasets/busca.v1.jsonl";
 const string DefaultDataset = "datasets/classificacao-chamados.v1.jsonl";
 const string DefaultKnowledge = "knowledge";
 
-var command = args.Length > 0 && args[0] is ClassifyCommand or EvaluateCommand or IngestCommand or SearchCommand or EvaluateSearchCommand or AnswerCommand ? args[0] : null;
+var command = args.Length > 0 && args[0] is ClassifyCommand or EvaluateCommand or IngestCommand or SearchCommand or EvaluateSearchCommand or AnswerCommand or EvaluateRagCommand ? args[0] : null;
 var text = string.Join(' ', command is null ? args : args[1..]);
 
 var settings = new ConfigurationBuilder()
@@ -77,11 +79,12 @@ if (command is IngestCommand or SearchCommand or EvaluateSearchCommand)
     }
 }
 
-if (command != EvaluateCommand && string.IsNullOrWhiteSpace(text))
+if (command is not (EvaluateCommand or EvaluateRagCommand) && string.IsNullOrWhiteSpace(text))
 {
     Console.WriteLine("Uso:");
     Console.WriteLine("  mimir \"sua pergunta\"                 (só o modelo, sem a base)");
-    Console.WriteLine($"  mimir {AnswerCommand} \"sua pergunta\"   (com a base de conhecimento e citação da fonte)");
+    Console.WriteLine($"  mimir {AnswerCommand} [--perfil rh,ti] \"sua pergunta\"   (com a base de conhecimento e citação da fonte)");
+    Console.WriteLine($"  mimir {EvaluateRagCommand} [arquivo.jsonl]   (padrão: {DefaultRagDataset})");
     Console.WriteLine($"  mimir {ClassifyCommand} \"texto do chamado\"");
     Console.WriteLine($"  mimir {EvaluateCommand} [arquivo.jsonl]   (padrão: {DefaultDataset})");
     Console.WriteLine($"  mimir {IngestCommand} [pasta]            (padrão: {DefaultKnowledge})");
@@ -117,7 +120,10 @@ try
             return 0;
 
         case AnswerCommand:
-            return await AnswerAsync(chatClient, settings, text.Trim(), usage);
+            return await AnswerAsync(chatClient, settings, args[1..], usage);
+
+        case EvaluateRagCommand:
+            return await EvaluateRagAsync(chatClient, settings, string.IsNullOrWhiteSpace(text) ? null : text.Trim(), usage);
 
         case EvaluateCommand:
             return await EvaluateAsync(chatClient, options, usage, string.IsNullOrWhiteSpace(text) ? null : text.Trim());
@@ -231,15 +237,31 @@ static async Task<int> EvaluateSearchAsync(HybridSearch search, string? datasetP
     return 0;
 }
 
-static async Task<int> AnswerAsync(IChatClient chatClient, IConfiguration settings, string question, UsageTracker usage)
+static async Task<int> AnswerAsync(IChatClient chatClient, IConfiguration settings, string[] arguments, UsageTracker usage)
 {
+    // --perfil rh,ti: os perfis de quem pergunta. Sem ele, só os documentos de "todos".
+    var scope = AccessScope.Public;
+    if (arguments.Length >= 2 && arguments[0] == "--perfil")
+    {
+        scope = AccessScope.For(arguments[1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        arguments = arguments[2..];
+    }
+
+    var question = string.Join(' ', arguments).Trim();
+    if (question.Length == 0)
+    {
+        Console.Error.WriteLine("Uso: mimir responder [--perfil rh,ti] \"sua pergunta\"");
+        return 1;
+    }
+
     // A pergunta usa os dois modelos: o de embeddings para buscar os trechos e o de conversa para responder.
     var embeddingOptions = settings.GetSection(EmbeddingOptions.SectionName).Get<EmbeddingOptions>() ?? new EmbeddingOptions();
     var (generator, model) = EmbeddingGeneratorFactory.Create(embeddingOptions, Environment.GetEnvironmentVariable);
     using (generator)
     {
         var retriever = new HybridRetriever(new HybridSearch(generator, new SqliteChunkStore(embeddingOptions.Database), model));
-        var answer = await new GroundedAssistant(chatClient, retriever).AnswerAsync(question);
+        Console.Error.WriteLine($"(perfis: {scope})");
+        var answer = await new GroundedAssistant(chatClient, retriever).AnswerAsync(question, scope);
 
         Console.WriteLine(answer.Text);
         if (answer.Answered)
@@ -264,6 +286,46 @@ static async Task<int> AnswerAsync(IChatClient chatClient, IConfiguration settin
 
         PrintUsage(usage);
         return 0;
+    }
+}
+
+static async Task<int> EvaluateRagAsync(IChatClient chatClient, IConfiguration settings, string? datasetPath, UsageTracker usage)
+{
+    var path = datasetPath ?? Path.Combine(AppContext.BaseDirectory, DefaultRagDataset);
+    var cases = RagEvaluation.Parse(await File.ReadAllTextAsync(path));
+    var embeddingOptions = settings.GetSection(EmbeddingOptions.SectionName).Get<EmbeddingOptions>() ?? new EmbeddingOptions();
+    var (generator, model) = EmbeddingGeneratorFactory.Create(embeddingOptions, Environment.GetEnvironmentVariable);
+    using (generator)
+    {
+        var store = new SqliteChunkStore(embeddingOptions.Database);
+        // Quem pode ler cada documento, a partir do próprio índice. Serve só para acusar vazamento na avaliação.
+        var access = (await store.GetAllAsync(CancellationToken.None))
+            .GroupBy(item => item.Chunk.DocumentId)
+            .ToDictionary(group => group.Key, group => group.First().Chunk, StringComparer.Ordinal);
+        var assistant = new GroundedAssistant(chatClient, new HybridRetriever(new HybridSearch(generator, store, model)));
+
+        Console.WriteLine($"Avaliando {cases.Count} perguntas do RAG...");
+        var progress = new SynchronousRagProgress(result =>
+        {
+            var mark = result.IsCorrect ? "ok  " : "ERRO";
+            var sources = string.Join(", ", result.Answer.Sources.Select(s => RagEvaluation.DocumentOf(s.Citation)).Distinct());
+            Console.WriteLine($"  {mark} {result.Case.Id,-7} {result.Outcome,-16} {(sources.Length == 0 ? "-" : sources)} ({result.Elapsed.TotalSeconds:0.0} s)");
+        });
+        var results = await RagEvaluation.RunAsync(
+            assistant,
+            cases,
+            (document, scope) => access.TryGetValue(document, out var chunk) && scope.CanRead(chunk),
+            progress);
+
+        Console.WriteLine();
+        Console.WriteLine($"Corretas: {results.Count(r => r.IsCorrect)} de {results.Count}");
+        foreach (var group in results.GroupBy(r => r.Outcome).OrderBy(g => g.Key))
+        {
+            Console.WriteLine($"  {group.Key,-16} {group.Count(),2}  {string.Join(", ", group.Select(r => r.Case.Id))}");
+        }
+
+        PrintUsage(usage);
+        return results.Any(r => r.Outcome == RagOutcome.Leak) ? 6 : 0;
     }
 }
 
@@ -310,6 +372,12 @@ static async Task<int> EvaluateAsync(IChatClient chatClient, LlmOptions options,
     Console.WriteLine($"Relatório: {Path.GetFullPath(reportPath)}");
     PrintUsage(usage);
     return 0;
+}
+
+/// <summary>Progresso da avaliação do RAG, na mesma thread.</summary>
+internal sealed class SynchronousRagProgress(Action<RagCaseResult> report) : IProgress<RagCaseResult>
+{
+    public void Report(RagCaseResult value) => report(value);
 }
 
 /// <summary>Mostra o progresso na hora, na mesma thread, sem o contexto de sincronização do <see cref="Progress{T}"/>.</summary>

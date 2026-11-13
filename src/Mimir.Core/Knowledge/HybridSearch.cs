@@ -37,23 +37,41 @@ public sealed class HybridSearch(IEmbeddingGenerator<string, Embedding<float>> g
     public const int RrfK = 60;
     private const int CandidatesPerSearch = 20;
 
-    public async Task<IReadOnlyList<HybridHit>> SearchAsync(
+    /// <summary>Busca em todos os trechos, sem filtro de perfil. Para diagnóstico (<c>mimir buscar</c>) e avaliação da busca.</summary>
+    public Task<IReadOnlyList<HybridHit>> SearchAsync(
         string query,
         SearchMode mode = SearchMode.Hybrid,
         int top = 5,
+        CancellationToken cancellationToken = default) =>
+        SearchAsync(query, mode, top, scope: null, cancellationToken);
+
+    /// <summary>
+    /// Busca só entre os trechos que o escopo pode ler. O filtro vem antes do ranking: um documento restrito não
+    /// ocupa vaga no resultado de quem não pode lê-lo.
+    /// </summary>
+    public async Task<IReadOnlyList<HybridHit>> SearchAsync(
+        string query,
+        SearchMode mode,
+        int top,
+        AccessScope? scope,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         ArgumentOutOfRangeException.ThrowIfLessThan(top, 1);
 
-        var all = (await store.GetAllAsync(cancellationToken)).ToDictionary(item => item.Chunk.Id, item => item.Chunk, StringComparer.Ordinal);
+        var all = (await store.GetAllAsync(cancellationToken))
+            .Where(item => scope is null || scope.CanRead(item.Chunk))
+            .ToDictionary(item => item.Chunk.Id, item => item.Chunk, StringComparer.Ordinal);
 
         IReadOnlyList<string> vector = mode == SearchMode.Text
             ? []
-            : [.. (await new SemanticSearch(generator, store, model).SearchAsync(query, CandidatesPerSearch, cancellationToken)).Select(hit => hit.Chunk.Id)];
+            : [.. (await new SemanticSearch(generator, store, model).SearchAsync(query, CandidatesPerSearch, scope, cancellationToken)).Select(hit => hit.Chunk.Id)];
+        // A busca por texto roda no SQLite, sem saber de perfis: pede mais candidatos e descarta o que o escopo não lê.
         IReadOnlyList<string> text = mode == SearchMode.Vector
             ? []
-            : await store.SearchTextAsync(query, CandidatesPerSearch, cancellationToken);
+            : [.. (await store.SearchTextAsync(query, scope is null ? CandidatesPerSearch : CandidatesPerSearch * 5, cancellationToken))
+                .Where(all.ContainsKey)
+                .Take(CandidatesPerSearch)];
 
         var vectorRank = Ranks(vector);
         var textRank = Ranks(text);

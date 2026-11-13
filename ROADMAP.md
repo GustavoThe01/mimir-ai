@@ -49,9 +49,9 @@
 - [x] Responder "não sei" quando não houver fonte
 
 ### Dia 10 — Permissões e qualidade
-- [ ] Filtro por perfil antes de montar o prompt
-- [ ] Teste provando que documento restrito não chega ao modelo
-- [ ] Avaliação do RAG com resultado no README; tag `v0.2.0`
+- [x] Filtro por perfil antes de montar o prompt
+- [x] Teste provando que documento restrito não chega ao modelo
+- [x] Avaliação do RAG com resultado no README; tag `v0.2.0`
 
 ## Semana 3 — Fine-Tuning → `v0.3.0`
 

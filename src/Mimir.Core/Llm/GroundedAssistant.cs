@@ -36,20 +36,25 @@ public sealed record GroundedAnswer(bool Answered, string Text, IReadOnlyList<Ci
 /// <summary>Onde o assistente busca os trechos. Na prática, a <see cref="HybridSearch"/>.</summary>
 public interface IChunkRetriever
 {
-    Task<IReadOnlyList<KnowledgeChunk>> RetrieveAsync(string question, int top, CancellationToken cancellationToken);
+    /// <summary>Os trechos mais relevantes entre os que o escopo pode ler.</summary>
+    Task<IReadOnlyList<KnowledgeChunk>> RetrieveAsync(string question, int top, AccessScope scope, CancellationToken cancellationToken);
 }
 
 public sealed class HybridRetriever(HybridSearch search) : IChunkRetriever
 {
-    public async Task<IReadOnlyList<KnowledgeChunk>> RetrieveAsync(string question, int top, CancellationToken cancellationToken) =>
-        [.. (await search.SearchAsync(question, SearchMode.Hybrid, top, cancellationToken)).Select(hit => hit.Chunk)];
+    public async Task<IReadOnlyList<KnowledgeChunk>> RetrieveAsync(string question, int top, AccessScope scope, CancellationToken cancellationToken) =>
+        [.. (await search.SearchAsync(question, SearchMode.Hybrid, top, scope, cancellationToken)).Select(hit => hit.Chunk)];
 }
 
 /// <summary>
 /// RAG: busca os trechos, monta o prompt com eles numerados e exige que a resposta cite os trechos usados.
 /// </summary>
 /// <remarks>
-/// <para>A garantia não depende de o modelo obedecer ao prompt. O código confere a resposta:</para>
+/// <para>
+/// Só entram no prompt os trechos que o <see cref="AccessScope"/> de quem pergunta pode ler. O filtro é feito na busca
+/// e conferido de novo aqui: um documento restrito nunca chega ao modelo.
+/// </para>
+/// <para>A garantia da citação não depende de o modelo obedecer ao prompt. O código confere a resposta:</para>
 /// <list type="bullet">
 ///   <item>sem trecho encontrado, a resposta é "não sei" e o modelo nem é chamado (custo zero);</item>
 ///   <item>resposta que não cita nenhum trecho, ou cita um número que não foi enviado, ganha uma nova tentativa;</item>
@@ -65,12 +70,22 @@ public sealed class GroundedAssistant(IChatClient chatClient, IChunkRetriever re
     private static readonly JsonElement Schema = JsonSerializer.Deserialize<JsonElement>(
         PromptLibrary.Load(PromptLibrary.GroundedAnswerSchema));
 
-    public async Task<GroundedAnswer> AnswerAsync(string question, int topChunks = DefaultTopChunks, CancellationToken cancellationToken = default)
+    /// <param name="scope">Os perfis de quem pergunta. Obrigatório: não existe resposta sem decidir o que a pessoa pode ler.</param>
+    public async Task<GroundedAnswer> AnswerAsync(
+        string question,
+        AccessScope scope,
+        int topChunks = DefaultTopChunks,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
+        ArgumentNullException.ThrowIfNull(scope);
         ArgumentOutOfRangeException.ThrowIfLessThan(topChunks, 1);
 
-        var chunks = await retriever.RetrieveAsync(question.Trim(), topChunks, cancellationToken);
+        // Segunda barreira: mesmo que a busca devolva um trecho que o escopo não lê (um bug, um retriever novo),
+        // ele é descartado aqui, antes de qualquer texto ir para o modelo.
+        var chunks = (await retriever.RetrieveAsync(question.Trim(), topChunks, scope, cancellationToken))
+            .Where(scope.CanRead)
+            .ToList();
         if (chunks.Count == 0)
         {
             return GroundedAnswer.NotFound(NoAnswerReason.NoSourcesFound);

@@ -5,7 +5,18 @@ e [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ## [Não lançado]
 
+## [0.2.0] - 2026-11-13
+
+Segunda semana do roadmap: Enterprise RAG, da ingestão à avaliação.
+
 ### Adicionado
+- `AccessScope`: os perfis de quem pergunta, mais `todos`; perfil desconhecido é erro.
+- Filtro por perfil nas buscas por vetor, por texto e híbrida, antes do ranking.
+- O `GroundedAssistant` exige o escopo e confere cada trecho de novo antes do prompt: trecho restrito nunca chega ao modelo.
+- `mimir responder --perfil rh,ti`.
+- `RagEvaluation` e o comando `mimir avaliar-rag`, com o conjunto `datasets/rag.v1.jsonl` (16 perguntas, incluindo documentos restritos com e sem perfil) e as categorias certa, "não sei" certo, fato ausente, fonte errada, "não sei" indevido, respondeu sem dever e vazamento.
+- Resultado real com os modelos locais: 16 de 16 certas, sem vazamento, em duas rodadas.
+- 20 testes novos (126 no total).
 - Base de conhecimento em `knowledge/`: 8 documentos fictícios da Yggdrasil Serviços, com cabeçalho de setor, perfis de acesso e data.
 - `DocumentParser`, que valida o cabeçalho e recusa documento sem perfil de acesso.
 - `Chunker`: trechos por seção e parágrafo, com sobreposição, citação por arquivo e linhas, caminho da seção e hash do texto.

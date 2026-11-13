@@ -1,0 +1,16 @@
+{"id": "pub-01", "pergunta": "posso dividir minhas férias em quantas partes?", "perfis": [], "documento": "politica-de-ferias", "fato": "três"}
+{"id": "pub-02", "pergunta": "quanto recebo de ajuda de custo para trabalhar de casa?", "perfis": [], "documento": "trabalho-remoto", "fato": "150"}
+{"id": "pub-03", "pergunta": "qual o prazo para pedir reembolso de uma despesa?", "perfis": [], "documento": "reembolso-de-despesas", "fato": "30 dias"}
+{"id": "pub-04", "pergunta": "o segundo fator de autenticação é obrigatório?", "perfis": [], "documento": "senhas-e-acessos", "fato": "obrigatório"}
+{"id": "pub-05", "pergunta": "ganhei um presente de um fornecedor, até que valor posso aceitar?", "perfis": [], "documento": "codigo-de-conduta", "fato": "100"}
+{"id": "pub-06", "pergunta": "quantas tentativas erradas de senha bloqueiam a conta?", "perfis": [], "documento": "senhas-e-acessos", "fato": "5"}
+{"id": "pub-07", "pergunta": "quantos caracteres a senha precisa ter?", "perfis": [], "documento": "senhas-e-acessos", "fato": "14"}
+{"id": "pub-08", "pergunta": "o que é centro de custo?", "perfis": [], "documento": "glossario-financeiro", "fato": "despesa"}
+{"id": "sem-01", "pergunta": "qual o cardápio do refeitório na sexta?", "perfis": [], "documento": null, "fato": null}
+{"id": "sem-02", "pergunta": "quem ganhou a copa do mundo de 2002?", "perfis": [], "documento": null, "fato": null}
+{"id": "res-01", "pergunta": "qual a faixa salarial de um desenvolvedor pleno?", "perfis": [], "documento": null, "fato": null}
+{"id": "res-02", "pergunta": "qual a faixa salarial de um desenvolvedor pleno?", "perfis": ["rh"], "documento": "faixas-salariais", "fato": "10.500"}
+{"id": "res-03", "pergunta": "qual a faixa salarial de um desenvolvedor pleno?", "perfis": ["ti"], "documento": null, "fato": null}
+{"id": "res-04", "pergunta": "qual o prazo de revisão de um contrato pelo jurídico?", "perfis": [], "documento": null, "fato": null}
+{"id": "res-05", "pergunta": "qual o prazo de revisão de um contrato pelo jurídico?", "perfis": ["juridico"], "documento": "contratos-com-fornecedores", "fato": "5 dias"}
+{"id": "res-06", "pergunta": "de quanto foi o reajuste salarial de 2026?", "perfis": ["diretoria"], "documento": "faixas-salariais", "fato": "5,2"}
