@@ -40,7 +40,7 @@ public sealed class StructuredOutputException : Exception
 /// porque modelos pequenos erram de forma não determinística. Se falhar de novo, o erro é explícito:
 /// um setor inventado nunca chega a virar resultado.
 /// </remarks>
-public sealed class TicketClassifier(IChatClient chatClient)
+public sealed class TicketClassifier(IChatClient chatClient, IReadOnlyList<(string Ticket, Department Department)>? examples = null)
 {
     private const int MaxAttempts = 2;
 
@@ -55,11 +55,20 @@ public sealed class TicketClassifier(IChatClient chatClient)
             throw new ArgumentException("O texto do chamado é obrigatório.", nameof(ticket));
         }
 
-        ChatMessage[] messages =
-        [
-            new(ChatRole.System, SystemPrompt),
-            new(ChatRole.User, $"<chamado>{ticket.Trim()}</chamado>"),
-        ];
+        // Com exemplos (few-shot), cada um vira uma troca pergunta-resposta antes do chamado real, no mesmo formato
+        // que o modelo precisa devolver. É a alternativa barata ao fine-tuning: ensinar pelo prompt, sem treinar.
+        var messages = new List<ChatMessage> { new(ChatRole.System, SystemPrompt) };
+        foreach (var (exampleTicket, department) in examples ?? [])
+        {
+            messages.Add(new ChatMessage(ChatRole.User, $"<chamado>{exampleTicket}</chamado>"));
+            messages.Add(new ChatMessage(ChatRole.Assistant, JsonSerializer.Serialize(new
+            {
+                department = department.ToString().ToUpperInvariant(),
+                reason = "Exemplo de referência.",
+            })));
+        }
+
+        messages.Add(new ChatMessage(ChatRole.User, $"<chamado>{ticket.Trim()}</chamado>"));
 
         var options = new ChatOptions
         {

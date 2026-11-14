@@ -57,6 +57,9 @@ public sealed class EvaluationReport
 
     public double Accuracy => (double)Correct / Total;
 
+    /// <summary>Média simples do F1 dos setores: cada setor pesa igual, mesmo com menos casos.</summary>
+    public double MacroF1 => PerDepartment.Average(metric => metric.F1);
+
     public TimeSpan AverageLatency => TimeSpan.FromTicks((long)Results.Average(r => r.Elapsed.Ticks));
 
     /// <summary>Quantos casos esperavam <paramref name="expected"/> e receberam <paramref name="predicted"/>.</summary>
@@ -75,6 +78,7 @@ public sealed class EvaluationReport
         md.AppendLine(Inv($"| Início | {StartedAt.ToUniversalTime():yyyy-MM-dd HH:mm} UTC |"));
         md.AppendLine(Inv($"| Casos | {Total} |"));
         md.AppendLine(Inv($"| Acertos | **{Correct} de {Total} ({Percent(Accuracy)})** |"));
+        md.AppendLine(Inv($"| F1 macro | {Percent(MacroF1)} |"));
         md.AppendLine(Inv($"| Respostas inválidas | {InvalidOutputs} |"));
         md.AppendLine(Inv($"| Latência média | {AverageLatency.TotalSeconds.ToString("0.0", PtBr)} s |"));
         md.AppendLine();

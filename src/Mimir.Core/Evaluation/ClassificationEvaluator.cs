@@ -9,10 +9,16 @@ namespace Mimir.Core.Evaluation;
 /// Os casos rodam um de cada vez: o modelo local atende uma requisição por vez, e assim a latência medida
 /// é a de cada chamada, sem fila. Uma resposta inválida conta como erro e não interrompe a rodada.
 /// </remarks>
-public sealed class ClassificationEvaluator(TicketClassifier classifier, TimeProvider timeProvider)
+public sealed class ClassificationEvaluator(TicketClassifier classifier, TimeProvider timeProvider, string? promptLabel = null)
 {
     public ClassificationEvaluator(TicketClassifier classifier)
         : this(classifier, TimeProvider.System)
+    {
+    }
+
+    /// <param name="promptLabel">O que vai no relatório como prompt, como "ticket-classification.v1.txt + 10 exemplos".</param>
+    public ClassificationEvaluator(TicketClassifier classifier, string promptLabel)
+        : this(classifier, TimeProvider.System, promptLabel)
     {
     }
 
@@ -45,6 +51,6 @@ public sealed class ClassificationEvaluator(TicketClassifier classifier, TimePro
             progress?.Report(result);
         }
 
-        return new EvaluationReport(model, PromptLibrary.TicketClassification, startedAt, results);
+        return new EvaluationReport(model, promptLabel ?? PromptLibrary.TicketClassification, startedAt, results);
     }
 }
