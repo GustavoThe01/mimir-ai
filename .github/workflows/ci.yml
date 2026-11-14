@@ -23,3 +23,10 @@ jobs:
 
       - name: Test
         run: dotnet test --no-build -c Release
+
+      # O conjunto de fine-tuning é gerado por script. Se alguém editar os .jsonl à mão, ou mudar o script sem
+      # regerar os arquivos, o CI acusa: os arquivos do repositório precisam ser exatamente o que o script produz.
+      - name: Conjunto de fine-tuning reproduzível
+        run: |
+          python3 training/dados/gerar_chamados.py
+          git diff --exit-code -- datasets/chamados

@@ -5,6 +5,13 @@ e [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ## [Não lançado]
 
+### Adicionado
+- Conjunto de fine-tuning em `datasets/chamados/`: 400 chamados fictícios rotulados por setor, 280 de treino, 60 de validação e 60 de teste, equilibrados entre os 5 setores.
+- `training/dados/gerar_chamados.py`, determinístico e sem dependências: 100 situações escritas à mão, 4 redações cada, divididas por situação para não haver vazamento entre os conjuntos.
+- `TicketSplits` para carregar os conjuntos e conferir vazamento.
+- Passo no CI que regera o conjunto e falha se ele for diferente do que está no repositório.
+- 8 testes novos (134 no total).
+
 ## [0.2.0] - 2026-11-13
 
 Segunda semana do roadmap: Enterprise RAG, da ingestão à avaliação.
