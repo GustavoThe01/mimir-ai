@@ -87,6 +87,7 @@ if (command is not (EvaluateCommand or EvaluateRagCommand) && string.IsNullOrWhi
     Console.WriteLine($"  mimir {EvaluateRagCommand} [arquivo.jsonl]   (padrão: {DefaultRagDataset})");
     Console.WriteLine($"  mimir {ClassifyCommand} \"texto do chamado\"");
     Console.WriteLine($"  mimir {EvaluateCommand} [arquivo.jsonl]   (padrão: {DefaultDataset})");
+    Console.WriteLine($"  mimir {EvaluateCommand} --conjunto teste|validacao [--exemplos N]   (conjunto do fine-tuning)");
     Console.WriteLine($"  mimir {IngestCommand} [pasta]            (padrão: {DefaultKnowledge})");
     Console.WriteLine($"  mimir {SearchCommand} [--modo hibrida|vetor|texto] \"sua pergunta\"");
     Console.WriteLine($"  mimir {EvaluateSearchCommand} [arquivo.jsonl]   (padrão: {DefaultSearchDataset})");
@@ -126,7 +127,7 @@ try
             return await EvaluateRagAsync(chatClient, settings, string.IsNullOrWhiteSpace(text) ? null : text.Trim(), usage);
 
         case EvaluateCommand:
-            return await EvaluateAsync(chatClient, options, usage, string.IsNullOrWhiteSpace(text) ? null : text.Trim());
+            return await EvaluateAsync(chatClient, options, usage, args[1..]);
 
         default:
             await foreach (var part in new KnowledgeAssistant(chatClient).AskStreamingAsync(text))
@@ -343,11 +344,53 @@ static void PrintUsage(UsageTracker usage)
     Console.WriteLine($"[{usage.Calls.Count} chamada(s) · {tokens} · {seconds:0.0} s]");
 }
 
-static async Task<int> EvaluateAsync(IChatClient chatClient, LlmOptions options, UsageTracker usage, string? datasetPath)
+/// <summary>
+/// mimir avaliar [arquivo.jsonl]                          os 20 chamados do Dia 04 (ou outro arquivo no mesmo formato)
+/// mimir avaliar --conjunto teste|validacao [--exemplos N] o conjunto do fine-tuning, com N exemplos por setor no prompt
+/// </summary>
+static async Task<int> EvaluateAsync(IChatClient chatClient, LlmOptions options, UsageTracker usage, string[] arguments)
 {
-    var path = datasetPath ?? Path.Combine(AppContext.BaseDirectory, DefaultDataset);
-    var cases = EvaluationDataset.Parse(await File.ReadAllTextAsync(path));
+    string? split = null;
+    var perDepartment = 0;
+    string? datasetPath = null;
+    for (var i = 0; i < arguments.Length; i++)
+    {
+        switch (arguments[i])
+        {
+            case "--conjunto" when i + 1 < arguments.Length:
+                split = arguments[++i];
+                break;
+            case "--exemplos" when i + 1 < arguments.Length:
+                perDepartment = int.Parse(arguments[++i], CultureInfo.InvariantCulture);
+                break;
+            default:
+                datasetPath = arguments[i];
+                break;
+        }
+    }
+
+    IReadOnlyList<EvaluationCase> cases;
+    IReadOnlyList<(string Ticket, Department Department)> examples = [];
+    var label = "dia04";
+    if (split is null)
+    {
+        cases = EvaluationDataset.Parse(await File.ReadAllTextAsync(datasetPath ?? Path.Combine(AppContext.BaseDirectory, DefaultDataset)));
+    }
+    else
+    {
+        var splits = TicketSplits.Load(Path.Combine(AppContext.BaseDirectory, "datasets", "chamados"));
+        cases = TicketSplits.AsCases(split switch
+        {
+            "teste" => splits.Test,
+            "validacao" => splits.Validation,
+            _ => throw new InvalidOperationException($"Conjunto desconhecido: {split}. Use teste ou validacao."),
+        });
+        examples = splits.FewShotExamples(perDepartment);
+        label = $"{split}-{examples.Count}ex";
+    }
+
     var model = $"{options.Provider} · {options.Model ?? "modelo padrão"}";
+    var prompt = examples.Count == 0 ? PromptLibrary.TicketClassification : $"{PromptLibrary.TicketClassification} + {examples.Count} exemplos do treino";
 
     Console.WriteLine($"Avaliando {cases.Count} casos com {model}...");
     var done = 0;
@@ -359,16 +402,16 @@ static async Task<int> EvaluateAsync(IChatClient chatClient, LlmOptions options,
         Console.WriteLine($"  [{done,2}/{cases.Count}] {mark} {result.Case.Id,-8} → {predicted} ({result.Elapsed.TotalSeconds:0.0} s)");
     });
 
-    var report = await new ClassificationEvaluator(new TicketClassifier(chatClient)).RunAsync(cases, model, progress);
+    var report = await new ClassificationEvaluator(new TicketClassifier(chatClient, examples), prompt).RunAsync(cases, model, progress);
 
     Directory.CreateDirectory("relatorios");
     var reportPath = Path.Combine(
         "relatorios",
-        $"avaliacao-{report.StartedAt.ToUniversalTime().ToString("yyyyMMdd-HHmm", CultureInfo.InvariantCulture)}.md");
+        $"avaliacao-{label}-{report.StartedAt.ToUniversalTime().ToString("yyyyMMdd-HHmm", CultureInfo.InvariantCulture)}.md");
     await File.WriteAllTextAsync(reportPath, report.ToMarkdown());
 
     Console.WriteLine();
-    Console.WriteLine($"Acertos: {report.Correct} de {report.Total} ({report.Accuracy:P1})");
+    Console.WriteLine($"Acertos: {report.Correct} de {report.Total} ({report.Accuracy:P1}) · F1 macro {report.MacroF1:P1}");
     Console.WriteLine($"Relatório: {Path.GetFullPath(reportPath)}");
     PrintUsage(usage);
     return 0;

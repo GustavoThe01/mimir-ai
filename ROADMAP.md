@@ -59,7 +59,7 @@
 - [x] Chamados fictícios rotulados por setor, separados em treino, validação e teste
 
 ### Dia 12 — Linha de base
-- [ ] Classificar com o modelo sem ajuste e medir acurácia e F1
+- [x] Classificar com o modelo sem ajuste e medir acurácia e F1
 
 ### Dia 13 — Treino
 - [ ] Script em `training/`, rodando em GPU local ou no Google Colab gratuito

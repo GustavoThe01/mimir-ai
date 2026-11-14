@@ -38,6 +38,25 @@ public sealed record TicketSplits(IReadOnlyList<LabeledTicket> Train, IReadOnlyL
             .ToList();
     }
 
+    /// <summary>Os chamados de um conjunto no formato da avaliação.</summary>
+    public static IReadOnlyList<EvaluationCase> AsCases(IReadOnlyList<LabeledTicket> tickets) =>
+        [.. tickets.Select(t => new EvaluationCase(t.Id, t.Text, t.Department))];
+
+    /// <summary>
+    /// Exemplos para o few-shot: os primeiros <paramref name="perDepartment"/> chamados de cada setor do TREINO, em ordem
+    /// de id, um por situação. Nunca da validação nem do teste, para não mostrar ao modelo a resposta da prova.
+    /// </summary>
+    public IReadOnlyList<(string Ticket, Department Department)> FewShotExamples(int perDepartment)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(perDepartment);
+        return [.. Train
+            .GroupBy(t => t.Department)
+            .OrderBy(g => g.Key)
+            .SelectMany(g => g.GroupBy(t => t.Group).OrderBy(s => s.Key, StringComparer.Ordinal).Take(perDepartment)
+                .Select(s => s.OrderBy(t => t.Id, StringComparer.Ordinal).First()))
+            .Select(t => (t.Text, t.Department))];
+    }
+
     /// <summary>Grupos que aparecem em mais de um conjunto. Precisa ser vazio, ou o teste mede memória.</summary>
     public IReadOnlyList<string> LeakingGroups()
     {

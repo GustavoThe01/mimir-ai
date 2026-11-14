@@ -13,8 +13,8 @@ com o código pronto para trocar o modelo local por uma API paga mudando só a c
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-local-000000?style=flat-square&logo=ollama&logoColor=white)
 ![Custo](https://img.shields.io/badge/custo-R$_0-15803d?style=flat-square)
-![Roadmap](https://img.shields.io/badge/roadmap-dia_11_de_20-4338ca?style=flat-square)
-![Testes](https://img.shields.io/badge/testes-134_passando-15803d?style=flat-square)
+![Roadmap](https://img.shields.io/badge/roadmap-dia_12_de_20-4338ca?style=flat-square)
+![Testes](https://img.shields.io/badge/testes-140_passando-15803d?style=flat-square)
 
 </div>
 
@@ -70,7 +70,7 @@ Defini duas regras para ele: **não gastar nada** para construí-lo e **não dep
 |---|---|---|---|
 | **LLM** | Responder perguntas através de uma interface única, com o provedor definido na configuração | Ollama + modelo aberto | ✅ Responde com modelo local, em streaming e com saída estruturada, com avaliação (80% de acerto em 20 casos), limite de tempo, nova tentativa e registro de tokens |
 | **Enterprise RAG** | Responder com base nos documentos da empresa, citando a fonte e respeitando a permissão de quem pergunta | Embeddings locais + SQLite | ✅ Concluído na `v0.2.0`: busca híbrida, citação obrigatória, filtro por perfil e avaliação com 16 perguntas |
-| **Fine-Tuning** | Treinar um modelo pequeno para classificar chamados por setor e medir o ganho contra o modelo sem ajuste | Script de treino em GPU local ou Google Colab gratuito | 🟡 Dados prontos (400 chamados em treino, validação e teste); treino nos Dias 12–15 |
+| **Fine-Tuning** | Treinar um modelo pequeno para classificar chamados por setor e medir o ganho contra o modelo sem ajuste | Script de treino em GPU local ou Google Colab gratuito | 🟡 Dados (400 chamados) e linha de base prontos: few-shot já acerta 95% no teste; treino nos Dias 13–15 |
 | **MCP** | Expor a busca e os chamados como ferramentas, para qualquer cliente compatível usar | SDK oficial do MCP para C# | ⏳ Dias 16–17 |
 | **Agentes Autônomos** | Agente que faz a triagem de um chamado consultando as ferramentas MCP, com limite de passos e aprovação humana | Modelo local com suporte a ferramentas | ⏳ Dias 18–19 |
 
@@ -405,6 +405,44 @@ cada situação foi escrito por mim, então o vocabulário é mais limpo que o d
 digitação nem mensagens que misturam dois assuntos. A linha de base do Dia 12 vai mostrar quanto o modelo sem ajuste
 já acerta nele; se acertar quase tudo, o fine-tuning terá pouco a provar, e eu vou registrar isso.
 
+### Linha de base: o modelo sem ajuste, com e sem exemplos
+
+Antes de treinar qualquer coisa, medi o `llama3.2:3b` sem ajuste nos 60 chamados do **teste**, de duas formas:
+
+- **Zero-shot:** só o prompt de classificação, com a descrição de cada setor.
+- **Few-shot:** o mesmo prompt mais 10 exemplos (2 por setor) tirados do **treino**, cada um como uma pergunta e a
+  resposta certa. É a alternativa barata ao fine-tuning: ensinar pelo prompt, sem treinar nada.
+
+O classificador não fixa a temperatura, então as respostas variam de uma rodada para outra. Rodei cada forma três
+vezes:
+
+| Forma | Rodada 1 | Rodada 2 | Rodada 3 | F1 macro (rodada 1) | Tokens de entrada por chamado |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Zero-shot | 46/60 (76,7%) | 48/60 (80,0%) | 50/60 (83,3%) | 78,3% | ~260 |
+| Few-shot (10 exemplos) | 57/60 (95,0%) | 57/60 (95,0%) | 58/60 (96,7%) | 95,2% | ~960 |
+
+Os relatórios da primeira rodada, com a matriz de confusão e cada erro, estão em
+[`docs/avaliacao/`](docs/avaliacao/2026-11-14-llama3.2-3b-teste-zero-shot.md).
+
+O que os erros mostram:
+
+- **No zero-shot, na dúvida o modelo escolhe "Outros".** Todos os 14 erros da primeira rodada foram para OUTROS: o
+  setor ficou com 100% de revocação e 46% de precisão. "Declaração de vínculo para alugar um apartamento" (RH) e
+  "pedido de informação de um órgão regulador" (Jurídico) não batem com as palavras da descrição dos setores.
+- **Com exemplos, o vício some.** OUTROS foi a 100% de precisão, e os poucos erros que sobraram mudaram de lugar
+  (um "colaborador saiu e o acesso precisa ser removido", que é TI, foi para RH).
+- **O custo é o tamanho do prompt.** Os exemplos quase quadruplicam os tokens de entrada de cada chamado. Num modelo
+  local isso é tempo; numa API paga, seria dinheiro a cada chamado.
+
+Duas ressalvas sobre esses números:
+
+- **A amostra efetiva é menor que 60.** As 4 redações de uma situação costumam errar juntas (as 4 da "declaração de
+  vínculo" erraram), então o teste tem, na prática, 15 situações diferentes. Uma diferença de 1 ou 2 pontos entre duas
+  rodadas não quer dizer nada.
+- **O fine-tuning tem pouco espaço.** Few-shot já está em 95%. Para valer a pena, o modelo ajustado precisa empatar
+  com isso usando um prompt curto (sem os exemplos e o custo deles) ou passar disso. Se não fizer nenhum dos dois, o
+  resultado do Dia 15 vai dizer que, para este problema, exemplos no prompt bastam.
+
 ### MCP: ferramentas padronizadas
 
 O servidor MCP expõe `search_knowledge`, `get_ticket` e `create_ticket`. As regras de permissão são as mesmas da aplicação: o protocolo não abre um caminho paralelo até os dados.
@@ -512,6 +550,13 @@ Para rodar a avaliação com os 20 chamados do conjunto (o relatório sai na pas
 
 ```bash
 dotnet run --project src/Mimir.Cli -- avaliar
+```
+
+Para a linha de base do fine-tuning, nos 60 chamados do teste, sem e com 2 exemplos por setor:
+
+```bash
+dotnet run --project src/Mimir.Cli -- avaliar --conjunto teste
+dotnet run --project src/Mimir.Cli -- avaliar --conjunto teste --exemplos 2
 ```
 
 Para indexar os documentos e buscar por significado, com o modelo de embeddings local:
@@ -640,7 +685,7 @@ O formato de dados de treino e a forma de usar o modelo ajustado no Mimir entram
 |---|---|---|:---:|---|
 | 1 | 01–05 | LLM | `v0.1.0` | 🟪🟪🟪🟪🟪 |
 | 2 | 06–10 | Enterprise RAG | `v0.2.0` | 🟪🟪🟪🟪🟪 |
-| 3 | 11–15 | Fine-Tuning | `v0.3.0` | 🟪⬜⬜⬜⬜ |
+| 3 | 11–15 | Fine-Tuning | `v0.3.0` | 🟪🟪⬜⬜⬜ |
 | 4 | 16–20 | MCP e Agentes Autônomos | `v1.0.0` | ⬜⬜⬜⬜⬜ |
 
 Detalhes no [ROADMAP.md](ROADMAP.md) · Mudanças no [CHANGELOG.md](CHANGELOG.md).
@@ -667,6 +712,8 @@ dotnet test
 | Classificação com modelo local | `mimir avaliar` com 20 chamados, fora do CI | ✅ 16 de 20 nos Dias 04 e 05 |
 | Permissões e avaliação do RAG | Escopo de perfis, filtro nas três buscas, trecho restrito fora do prompt e as categorias da avaliação | ✅ 20 testes |
 | Dados do fine-tuning | Tamanhos, equilíbrio por setor, nenhuma situação em dois conjuntos, nenhum texto repetido | ✅ 8 testes + reprodução no CI |
+| Linha de base | Exemplos no prompt (few-shot), escolha dos exemplos só do treino, F1 macro | ✅ 6 testes |
+| Linha de base com modelo local | `mimir avaliar --conjunto teste` nos 60 chamados do teste, fora do CI | ✅ zero-shot 77–83%, few-shot 95–97% |
 | Qualidade do RAG com modelo local | `mimir avaliar-rag` com 16 perguntas, fora do CI | ✅ 16 de 16, sem vazamento |
 | Segurança do agente | Limite de passos, aprovação e prompt injection | ⏳ Dia 19 |
 
@@ -711,7 +758,8 @@ Mantenho aqui um checklist vivo do que ainda vou incrementar neste repositório.
 - [x] Embeddings com `IEmbeddingGenerator` e índice de vetores no SQLite (Dia 07)
 - [x] Enterprise RAG: busca híbrida, citações, permissões e avaliação (Dias 08–10) → `v0.2.0`
 - [x] Fine-Tuning: conjunto de dados com treino, validação e teste (Dia 11)
-- [ ] Fine-Tuning: linha de base, treino, exportação e comparação (Dias 12–15) → `v0.3.0`
+- [x] Fine-Tuning: linha de base zero-shot e few-shot (Dia 12)
+- [ ] Fine-Tuning: treino, exportação e comparação (Dias 13–15) → `v0.3.0`
 - [ ] Servidor MCP (Dias 16–17)
 - [ ] Agente autônomo e testes de segurança (Dias 18–19)
 - [ ] Demonstração e release (Dia 20) → `v1.0.0`

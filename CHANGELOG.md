@@ -6,6 +6,11 @@ e [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 ## [Não lançado]
 
 ### Adicionado
+- Linha de base do fine-tuning: `mimir avaliar --conjunto teste|validacao [--exemplos N]`, com o conjunto de 60 chamados do teste.
+- `TicketClassifier` com exemplos opcionais no prompt (few-shot), como pares pergunta e resposta; os exemplos vêm só do treino, um por situação.
+- F1 macro no relatório de avaliação.
+- Resultado real com `llama3.2:3b`, três rodadas: zero-shot 76,7% a 83,3%, few-shot 95,0% a 96,7%. Relatórios de referência em `docs/avaliacao/`.
+- 6 testes novos (140 no total).
 - Conjunto de fine-tuning em `datasets/chamados/`: 400 chamados fictícios rotulados por setor, 280 de treino, 60 de validação e 60 de teste, equilibrados entre os 5 setores.
 - `training/dados/gerar_chamados.py`, determinístico e sem dependências: 100 situações escritas à mão, 4 redações cada, divididas por situação para não haver vazamento entre os conjuntos.
 - `TicketSplits` para carregar os conjuntos e conferir vazamento.
