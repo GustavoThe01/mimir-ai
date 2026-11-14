@@ -13,8 +13,8 @@ com o código pronto para trocar o modelo local por uma API paga mudando só a c
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-local-000000?style=flat-square&logo=ollama&logoColor=white)
 ![Custo](https://img.shields.io/badge/custo-R$_0-15803d?style=flat-square)
-![Roadmap](https://img.shields.io/badge/roadmap-dia_10_de_20-4338ca?style=flat-square)
-![Testes](https://img.shields.io/badge/testes-126_passando-15803d?style=flat-square)
+![Roadmap](https://img.shields.io/badge/roadmap-dia_11_de_20-4338ca?style=flat-square)
+![Testes](https://img.shields.io/badge/testes-134_passando-15803d?style=flat-square)
 
 </div>
 
@@ -70,7 +70,7 @@ Defini duas regras para ele: **não gastar nada** para construí-lo e **não dep
 |---|---|---|---|
 | **LLM** | Responder perguntas através de uma interface única, com o provedor definido na configuração | Ollama + modelo aberto | ✅ Responde com modelo local, em streaming e com saída estruturada, com avaliação (80% de acerto em 20 casos), limite de tempo, nova tentativa e registro de tokens |
 | **Enterprise RAG** | Responder com base nos documentos da empresa, citando a fonte e respeitando a permissão de quem pergunta | Embeddings locais + SQLite | ✅ Concluído na `v0.2.0`: busca híbrida, citação obrigatória, filtro por perfil e avaliação com 16 perguntas |
-| **Fine-Tuning** | Treinar um modelo pequeno para classificar chamados por setor e medir o ganho contra o modelo sem ajuste | Script de treino em GPU local ou Google Colab gratuito | ⏳ Dias 11–15 |
+| **Fine-Tuning** | Treinar um modelo pequeno para classificar chamados por setor e medir o ganho contra o modelo sem ajuste | Script de treino em GPU local ou Google Colab gratuito | 🟡 Dados prontos (400 chamados em treino, validação e teste); treino nos Dias 12–15 |
 | **MCP** | Expor a busca e os chamados como ferramentas, para qualquer cliente compatível usar | SDK oficial do MCP para C# | ⏳ Dias 16–17 |
 | **Agentes Autônomos** | Agente que faz a triagem de um chamado consultando as ferramentas MCP, com limite de passos e aprovação humana | Modelo local com suporte a ferramentas | ⏳ Dias 18–19 |
 
@@ -377,6 +377,34 @@ O que esse número não diz:
 
 Comparo o modelo ajustado com o mesmo modelo usando apenas exemplos no prompt, nos mesmos dados de teste. O treino é a única parte em Python, porque o ecossistema de treino é todo nessa linguagem. O motivo está no [ADR 0002](docs/adr/0002-fine-tuning-em-python.md).
 
+### Dados do fine-tuning: 400 chamados, divididos por situação
+
+O primeiro passo é o conjunto de dados, e o maior risco dele não é o tamanho: é o teste medir memória em vez de
+aprendizado. O script [`training/dados/gerar_chamados.py`](training/dados/gerar_chamados.py) gera os dados assim:
+
+- **100 situações escritas à mão**, 20 por setor (Financeiro, TI, RH, Jurídico e Outros): "o cartão corporativo foi
+  recusado na compra das passagens", "quero vender dez dias das minhas férias", "a máquina de café expresso está vazando".
+- **4 redações por situação**, com aberturas, fechamentos e detalhes diferentes ("Bom dia, ...", "... Estou em home
+  office.", "... É urgente."), como pessoas diferentes escreveriam a mesma coisa. São 400 chamados.
+- **Divisão por situação, e não por chamado.** As 4 redações de uma situação caem sempre no mesmo conjunto. Se a
+  divisão fosse por chamado, o modelo veria no treino uma frase quase igual à do teste, e a acurácia seria inflada.
+
+| Conjunto | Situações | Chamados | Por setor |
+|---|:---:|:---:|:---:|
+| Treino (`datasets/chamados/treino.jsonl`) | 70 | 280 | 56 |
+| Validação (`validacao.jsonl`) | 15 | 60 | 12 |
+| Teste (`teste.jsonl`) | 15 | 60 | 12 |
+
+O script é determinístico (semente fixa, sem dependências): rodar de novo produz os mesmos arquivos byte a byte. O CI
+roda o script e falha se os arquivos do repositório forem diferentes do que ele gera, então ninguém edita o conjunto à
+mão sem deixar rastro. Os testes conferem o resto: os tamanhos, o equilíbrio entre os setores, nenhum grupo em dois
+conjuntos, nenhum texto repetido e nenhum dos 20 chamados da avaliação do Dia 04 dentro dos dados.
+
+O que esse conjunto não é: chamados reais. As variações são de forma (abertura, fechamento, contexto), e o núcleo de
+cada situação foi escrito por mim, então o vocabulário é mais limpo que o de um chamado de verdade, sem erros de
+digitação nem mensagens que misturam dois assuntos. A linha de base do Dia 12 vai mostrar quanto o modelo sem ajuste
+já acerta nele; se acertar quase tudo, o fine-tuning terá pouco a provar, e eu vou registrar isso.
+
 ### MCP: ferramentas padronizadas
 
 O servidor MCP expõe `search_knowledge`, `get_ticket` e `create_ticket`. As regras de permissão são as mesmas da aplicação: o protocolo não abre um caminho paralelo até os dados.
@@ -612,7 +640,7 @@ O formato de dados de treino e a forma de usar o modelo ajustado no Mimir entram
 |---|---|---|:---:|---|
 | 1 | 01–05 | LLM | `v0.1.0` | 🟪🟪🟪🟪🟪 |
 | 2 | 06–10 | Enterprise RAG | `v0.2.0` | 🟪🟪🟪🟪🟪 |
-| 3 | 11–15 | Fine-Tuning | `v0.3.0` | ⬜⬜⬜⬜⬜ |
+| 3 | 11–15 | Fine-Tuning | `v0.3.0` | 🟪⬜⬜⬜⬜ |
 | 4 | 16–20 | MCP e Agentes Autônomos | `v1.0.0` | ⬜⬜⬜⬜⬜ |
 
 Detalhes no [ROADMAP.md](ROADMAP.md) · Mudanças no [CHANGELOG.md](CHANGELOG.md).
@@ -638,6 +666,7 @@ dotnet test
 | Com modelo local | Resposta real pelo Ollama, conferida à mão e fora do CI | ✅ Feito no Dia 02 |
 | Classificação com modelo local | `mimir avaliar` com 20 chamados, fora do CI | ✅ 16 de 20 nos Dias 04 e 05 |
 | Permissões e avaliação do RAG | Escopo de perfis, filtro nas três buscas, trecho restrito fora do prompt e as categorias da avaliação | ✅ 20 testes |
+| Dados do fine-tuning | Tamanhos, equilíbrio por setor, nenhuma situação em dois conjuntos, nenhum texto repetido | ✅ 8 testes + reprodução no CI |
 | Qualidade do RAG com modelo local | `mimir avaliar-rag` com 16 perguntas, fora do CI | ✅ 16 de 16, sem vazamento |
 | Segurança do agente | Limite de passos, aprovação e prompt injection | ⏳ Dia 19 |
 
@@ -648,7 +677,7 @@ dotnet test
 ```
 mimir-ai/
 ├── .github/workflows/ci.yml       # ✅ build e testes, sem custo
-├── datasets/                      # ✅ chamados com o setor esperado e perguntas de busca com o documento esperado
+├── datasets/                      # ✅ avaliações (chamados, busca e RAG) e chamados/ para o fine-tuning
 ├── knowledge/                     # ✅ documentos fictícios da empresa
 ├── docs/
 │   ├── adr/                       # ✅ decisões de arquitetura
@@ -659,7 +688,7 @@ mimir-ai/
 │   ├── Mimir.Infrastructure/      # ✅ provedores, resiliência, registro de uso e índice de vetores + FTS5 no SQLite
 │   └── Mimir.Cli/                 # ✅ perguntar, responder, classificar, avaliar, ingerir, buscar e avaliar-busca pelo terminal
 ├── tests/Mimir.Tests/             # ✅ testes unitários
-├── training/                      # ⏳ Dia 13 — fine-tuning em Python
+├── training/dados/                # ✅ gerador do conjunto de fine-tuning · ⏳ Dia 13 — treino
 ├── Mimir.slnx
 ├── Directory.Packages.props       # ✅ versões centralizadas
 ├── CHANGELOG.md
@@ -681,7 +710,8 @@ Mantenho aqui um checklist vivo do que ainda vou incrementar neste repositório.
 - [x] Ingestão: documentos fictícios e divisão em trechos com a origem (Dia 06)
 - [x] Embeddings com `IEmbeddingGenerator` e índice de vetores no SQLite (Dia 07)
 - [x] Enterprise RAG: busca híbrida, citações, permissões e avaliação (Dias 08–10) → `v0.2.0`
-- [ ] Fine-Tuning: dados, linha de base, treino, exportação e comparação (Dias 11–15) → `v0.3.0`
+- [x] Fine-Tuning: conjunto de dados com treino, validação e teste (Dia 11)
+- [ ] Fine-Tuning: linha de base, treino, exportação e comparação (Dias 12–15) → `v0.3.0`
 - [ ] Servidor MCP (Dias 16–17)
 - [ ] Agente autônomo e testes de segurança (Dias 18–19)
 - [ ] Demonstração e release (Dia 20) → `v1.0.0`

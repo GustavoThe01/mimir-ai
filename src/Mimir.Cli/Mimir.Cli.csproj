@@ -15,6 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\datasets\*.jsonl" Link="datasets\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\datasets\chamados\*.jsonl" Link="datasets\chamados\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\knowledge\*.md" Link="knowledge\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

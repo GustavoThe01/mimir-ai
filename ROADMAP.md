@@ -56,7 +56,7 @@
 ## Semana 3 — Fine-Tuning → `v0.3.0`
 
 ### Dia 11 — Dados
-- [ ] Chamados fictícios rotulados por setor, separados em treino, validação e teste
+- [x] Chamados fictícios rotulados por setor, separados em treino, validação e teste
 
 ### Dia 12 — Linha de base
 - [ ] Classificar com o modelo sem ajuste e medir acurácia e F1
